@@ -108,16 +108,27 @@ Copy the output (e.g., `/opt/homebrew/bin/python3`).
 
 ## Available MCP Tools
 
-- `get_database_schema`: List all available tables with descriptions
-- `get_table_info`: Get detailed schema information for a specific table
-- `execute_umcdb_query`: Execute validated SQL queries (aggregated only)
-- `get_patient_count`: Get total patient count
-- `get_demographics_summary`: Summary statistics for patient demographics
+### Data Discovery
+- `get_database_schema`: List all available tables
+- `get_table_info`: Get table schema and sample data
+
+### OMOP Vocabulary (Query by Name, Not IDs)
+- `lookup_concept`: Get name for a concept ID (e.g., 8507 → "Male")
+- `search_concepts`: Find concepts by name (e.g., "sepsis" → concept IDs)
+- `get_concept_descendants`: Find child concepts under a parent
+- `query_with_concepts`: Query data using concept names instead of IDs
+
+### Clinical Data Summaries
+- `get_patient_count`: Total patient count
+- `get_demographics_summary`: Patient demographics
 - `get_visit_summary`: ICU admission statistics
 - `get_condition_summary`: Diagnosis/condition statistics
-- `get_medication_summary`: Medication administration statistics
-- `get_procedure_summary`: Clinical procedure statistics
+- `get_medication_summary`: Medication statistics
+- `get_procedure_summary`: Procedure statistics
 - `get_measurement_summary`: Clinical measurement statistics
+
+### Custom Queries
+- `execute_umcdb_query`: Execute validated SQL queries (aggregated only)
 
 ## Security Features
 

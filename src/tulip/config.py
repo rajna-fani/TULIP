@@ -76,7 +76,7 @@ _RUNTIME_CONFIG_PATH = _CONFIG_DIR / "config.json"
 # -------------------------------------------------------------------
 
 # OMOP CDM Tables in AmsterdamUMCdb
-# These are the 7 core tables available in the database
+# These are the 7 core clinical tables available in the database
 #
 # NOTE: Column details are queried dynamically from BigQuery INFORMATION_SCHEMA
 # via the get_table_info() MCP tool to ensure accuracy.
@@ -116,6 +116,31 @@ UMCDB_TABLES = {
         "description": "Clinical measurements and observations",
         "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#measurement",
         "notes": "Contains ~1 billion clinical observations. Use get_table_info() to see all columns.",
+    },
+}
+
+# OMOP Vocabulary Tables
+# These tables allow translation between concept IDs and human-readable names
+OMOP_VOCAB_TABLES = {
+    "concept": {
+        "description": "Master list of all OMOP concepts with names and domains",
+        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#concept",
+        "key_columns": ["concept_id", "concept_name", "domain_id", "vocabulary_id", "concept_class_id"],
+    },
+    "concept_relationship": {
+        "description": "Relationships between concepts (hierarchical, mappings)",
+        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#concept_relationship",
+        "key_columns": ["concept_id_1", "concept_id_2", "relationship_id"],
+    },
+    "concept_ancestor": {
+        "description": "Hierarchical ancestry of concepts",
+        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#concept_ancestor",
+        "key_columns": ["ancestor_concept_id", "descendant_concept_id", "min_levels_of_separation"],
+    },
+    "concept_synonym": {
+        "description": "Alternative names/synonyms for concepts",
+        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#concept_synonym",
+        "key_columns": ["concept_id", "concept_synonym_name"],
     },
 }
 

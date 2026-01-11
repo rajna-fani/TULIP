@@ -706,6 +706,416 @@ def get_security_info() -> str:
 
 
 # ==========================================
+# OMOP VOCABULARY TOOLS
+# ==========================================
+
+@mcp.tool()
+def lookup_concept(concept_id: int) -> str:
+    """🔍 Get the human-readable name for an OMOP concept ID.
+
+    **When to use:** When you see a concept_id in query results and want to know what it means.
+
+    **Examples:**
+    - concept_id 8507 → "Male"
+    - concept_id 8532 → "Female"
+    - concept_id 4329847 → "Sepsis"
+
+    Args:
+        concept_id: The OMOP concept ID to look up
+
+    Returns:
+        Concept name, domain, and vocabulary information
+    """
+    banner = _get_status_banner()
+    
+    try:
+        config = get_bigquery_config()
+        dataset_project = config.get("dataset_project", config["project"])
+        location = config.get("location", "EU")
+        
+        query = f"""
+        SELECT 
+            concept_id,
+            concept_name,
+            domain_id,
+            vocabulary_id,
+            concept_class_id,
+            standard_concept
+        FROM `{dataset_project}.{config['dataset']}.concept`
+        WHERE concept_id = {int(concept_id)}
+        """
+        
+        from google.cloud import bigquery
+        job_config = bigquery.QueryJobConfig()
+        result = _bq_client.query(query, job_config=job_config, location=location).result()
+        
+        rows = list(result)
+        if not rows:
+            return f"{banner}\n❌ Concept ID {concept_id} not found in vocabulary."
+        
+        row = rows[0]
+        return f"""{banner}
+🔍 **Concept Lookup: {concept_id}**
+
+| Field | Value |
+|-------|-------|
+| **Name** | {row.concept_name} |
+| **Domain** | {row.domain_id} |
+| **Vocabulary** | {row.vocabulary_id} |
+| **Class** | {row.concept_class_id} |
+| **Standard** | {'Yes' if row.standard_concept == 'S' else 'No'} |
+
+💡 Use `search_concepts('{row.concept_name}')` to find related concepts."""
+        
+    except Exception as e:
+        logger.error(f"Concept lookup failed: {e}")
+        return f"{banner}\n❌ Concept lookup failed: {str(e)}"
+
+
+@mcp.tool()
+def search_concepts(
+    search_term: str,
+    domain: str | None = None,
+    limit: int = 20
+) -> str:
+    """🔎 Search for OMOP concepts by name.
+
+    **When to use:** When you want to find the concept_id for a condition, drug, measurement, etc.
+
+    **Examples:**
+    - search_concepts("sepsis") → Find sepsis-related concepts
+    - search_concepts("aspirin", domain="Drug") → Find aspirin drug concepts
+    - search_concepts("heart rate", domain="Measurement") → Find heart rate measurements
+
+    Args:
+        search_term: Text to search for (searches concept names and synonyms)
+        domain: Optional filter by domain (Drug, Condition, Measurement, Procedure, etc.)
+        limit: Maximum results to return (default: 20, max: 50)
+
+    Returns:
+        List of matching concepts with IDs, names, and domains
+    """
+    banner = _get_status_banner()
+    
+    if limit > 50:
+        limit = 50
+    
+    try:
+        config = get_bigquery_config()
+        dataset_project = config.get("dataset_project", config["project"])
+        location = config.get("location", "EU")
+        
+        # Escape search term for SQL
+        safe_term = search_term.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
+        
+        domain_filter = ""
+        if domain:
+            safe_domain = domain.replace("'", "''")
+            domain_filter = f"AND domain_id = '{safe_domain}'"
+        
+        query = f"""
+        SELECT DISTINCT
+            c.concept_id,
+            c.concept_name,
+            c.domain_id,
+            c.vocabulary_id,
+            c.concept_class_id,
+            c.standard_concept
+        FROM `{dataset_project}.{config['dataset']}.concept` c
+        LEFT JOIN `{dataset_project}.{config['dataset']}.concept_synonym` cs
+            ON c.concept_id = cs.concept_id
+        WHERE (
+            LOWER(c.concept_name) LIKE LOWER('%{safe_term}%')
+            OR LOWER(cs.concept_synonym_name) LIKE LOWER('%{safe_term}%')
+        )
+        {domain_filter}
+        AND c.standard_concept = 'S'
+        ORDER BY 
+            CASE WHEN LOWER(c.concept_name) = LOWER('{safe_term}') THEN 0 ELSE 1 END,
+            LENGTH(c.concept_name)
+        LIMIT {limit}
+        """
+        
+        from google.cloud import bigquery
+        job_config = bigquery.QueryJobConfig()
+        result = _bq_client.query(query, job_config=job_config, location=location).result()
+        
+        rows = list(result)
+        if not rows:
+            return f"""{banner}
+🔎 **Search: "{search_term}"** {f'(domain: {domain})' if domain else ''}
+
+No matching concepts found. Try:
+- Different spelling
+- More general term
+- Remove domain filter"""
+        
+        results_text = []
+        for row in rows:
+            std = "✓" if row.standard_concept == 'S' else ""
+            results_text.append(
+                f"| {row.concept_id} | {row.concept_name[:40]} | {row.domain_id} | {row.vocabulary_id} | {std} |"
+            )
+        
+        return f"""{banner}
+🔎 **Search: "{search_term}"** {f'(domain: {domain})' if domain else ''}
+
+Found {len(rows)} concepts:
+
+| ID | Name | Domain | Vocabulary | Std |
+|----|------|--------|------------|-----|
+{chr(10).join(results_text)}
+
+💡 Use `lookup_concept(concept_id)` for full details.
+💡 Use `get_concept_descendants(concept_id)` to find related concepts."""
+        
+    except Exception as e:
+        logger.error(f"Concept search failed: {e}")
+        return f"{banner}\n❌ Concept search failed: {str(e)}"
+
+
+@mcp.tool()
+def get_concept_descendants(
+    concept_id: int,
+    max_separation: int = 1,
+    limit: int = 50
+) -> str:
+    """🌳 Find all descendant concepts of a parent concept.
+
+    **When to use:** When you want to find all specific concepts under a general category.
+
+    **Examples:**
+    - get_concept_descendants(sepsis_concept_id) → Find all types of sepsis
+    - get_concept_descendants(antibiotic_class_id) → Find all antibiotics in that class
+
+    Args:
+        concept_id: The parent concept ID
+        max_separation: Maximum hierarchy levels to descend (default: 1, max: 3)
+        limit: Maximum results (default: 50, max: 100)
+
+    Returns:
+        List of descendant concepts with their hierarchy level
+    """
+    banner = _get_status_banner()
+    
+    if max_separation > 3:
+        max_separation = 3
+    if limit > 100:
+        limit = 100
+    
+    try:
+        config = get_bigquery_config()
+        dataset_project = config.get("dataset_project", config["project"])
+        location = config.get("location", "EU")
+        
+        # First get the parent concept name
+        parent_query = f"""
+        SELECT concept_name, domain_id
+        FROM `{dataset_project}.{config['dataset']}.concept`
+        WHERE concept_id = {int(concept_id)}
+        """
+        
+        from google.cloud import bigquery
+        job_config = bigquery.QueryJobConfig()
+        parent_result = _bq_client.query(parent_query, job_config=job_config, location=location).result()
+        parent_rows = list(parent_result)
+        
+        if not parent_rows:
+            return f"{banner}\n❌ Concept ID {concept_id} not found."
+        
+        parent_name = parent_rows[0].concept_name
+        parent_domain = parent_rows[0].domain_id
+        
+        # Get descendants
+        query = f"""
+        SELECT 
+            c.concept_id,
+            c.concept_name,
+            c.domain_id,
+            ca.min_levels_of_separation as hierarchy_level
+        FROM `{dataset_project}.{config['dataset']}.concept_ancestor` ca
+        JOIN `{dataset_project}.{config['dataset']}.concept` c
+            ON ca.descendant_concept_id = c.concept_id
+        WHERE ca.ancestor_concept_id = {int(concept_id)}
+            AND ca.min_levels_of_separation > 0
+            AND ca.min_levels_of_separation <= {max_separation}
+            AND c.standard_concept = 'S'
+        ORDER BY ca.min_levels_of_separation, c.concept_name
+        LIMIT {limit}
+        """
+        
+        result = _bq_client.query(query, job_config=job_config, location=location).result()
+        rows = list(result)
+        
+        if not rows:
+            return f"""{banner}
+🌳 **Descendants of: {parent_name}** (ID: {concept_id})
+
+No descendant concepts found within {max_separation} level(s)."""
+        
+        results_text = []
+        for row in rows:
+            indent = "  " * row.hierarchy_level
+            results_text.append(
+                f"| {row.concept_id} | {indent}{row.concept_name[:35]} | {row.hierarchy_level} |"
+            )
+        
+        return f"""{banner}
+🌳 **Descendants of: {parent_name}** (ID: {concept_id}, Domain: {parent_domain})
+
+Found {len(rows)} descendant concepts (max {max_separation} levels):
+
+| ID | Name | Level |
+|----|------|-------|
+{chr(10).join(results_text)}
+
+💡 Use these concept IDs in your queries to analyze specific conditions/drugs."""
+        
+    except Exception as e:
+        logger.error(f"Get descendants failed: {e}")
+        return f"{banner}\n❌ Get descendants failed: {str(e)}"
+
+
+@mcp.tool()
+def query_with_concepts(
+    table: str,
+    concept_column: str,
+    concept_search: str,
+    additional_filters: str | None = None,
+    group_by: str | None = None,
+    limit: int = 100
+) -> str:
+    """🚀 Query data using concept names instead of IDs.
+
+    **When to use:** When you want to query clinical data using natural language concept names
+    instead of numeric concept IDs.
+
+    **Examples:**
+    - query_with_concepts("condition_occurrence", "condition_concept_id", "sepsis")
+    - query_with_concepts("drug_exposure", "drug_concept_id", "aspirin")
+    - query_with_concepts("measurement", "measurement_concept_id", "heart rate")
+
+    Args:
+        table: Table to query (condition_occurrence, drug_exposure, measurement, etc.)
+        concept_column: The concept ID column to filter on
+        concept_search: Concept name to search for
+        additional_filters: Optional SQL WHERE conditions (e.g., "value_as_number > 100")
+        group_by: Optional GROUP BY columns
+        limit: Maximum rows to return (default: 100)
+
+    Returns:
+        Query results with concept names included
+    """
+    banner = _get_status_banner()
+    
+    # Validate table
+    valid_tables = ["condition_occurrence", "drug_exposure", "measurement", 
+                    "procedure_occurrence", "visit_occurrence", "person"]
+    if table.lower() not in valid_tables:
+        return f"{banner}\n❌ Invalid table. Use one of: {', '.join(valid_tables)}"
+    
+    if limit > 500:
+        limit = 500
+    
+    try:
+        config = get_bigquery_config()
+        dataset_project = config.get("dataset_project", config["project"])
+        location = config.get("location", "EU")
+        
+        # First search for matching concepts
+        safe_term = concept_search.replace("'", "''")
+        
+        concept_query = f"""
+        SELECT concept_id, concept_name
+        FROM `{dataset_project}.{config['dataset']}.concept`
+        WHERE LOWER(concept_name) LIKE LOWER('%{safe_term}%')
+            AND standard_concept = 'S'
+        LIMIT 10
+        """
+        
+        from google.cloud import bigquery
+        job_config = bigquery.QueryJobConfig()
+        concept_result = _bq_client.query(concept_query, job_config=job_config, location=location).result()
+        concept_rows = list(concept_result)
+        
+        if not concept_rows:
+            return f"""{banner}
+❌ No concepts found matching "{concept_search}".
+
+Try:
+- Different spelling
+- More general term
+- Use search_concepts() to explore available concepts"""
+        
+        # Get concept IDs
+        concept_ids = [str(row.concept_id) for row in concept_rows]
+        concept_names = {row.concept_id: row.concept_name for row in concept_rows}
+        
+        # Build the main query
+        safe_concept_column = concept_column.replace("'", "''")
+        
+        where_clause = f"{safe_concept_column} IN ({','.join(concept_ids)})"
+        if additional_filters:
+            # Basic validation of additional filters
+            dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "TRUNCATE", "--", ";"]
+            if any(d.lower() in additional_filters.lower() for d in dangerous):
+                return f"{banner}\n❌ Invalid filter: potentially dangerous SQL detected"
+            where_clause += f" AND ({additional_filters})"
+        
+        group_clause = ""
+        select_clause = f"t.*, c.concept_name"
+        if group_by:
+            group_clause = f"GROUP BY {group_by}, c.concept_name"
+            select_clause = f"{group_by}, c.concept_name, COUNT(*) as count"
+        
+        query = f"""
+        SELECT {select_clause}
+        FROM `{dataset_project}.{config['dataset']}.{table}` t
+        JOIN `{dataset_project}.{config['dataset']}.concept` c
+            ON t.{safe_concept_column} = c.concept_id
+        WHERE {where_clause}
+        {group_clause}
+        LIMIT {limit}
+        """
+        
+        # Security check
+        is_safe, msg, _ = enforce_security(query)
+        if not is_safe:
+            return f"{banner}\n❌ **Security Error:** {msg}"
+        
+        result = _bq_client.query(query, job_config=job_config, location=location).result()
+        df = result.to_dataframe()
+        
+        if df.empty:
+            return f"""{banner}
+🔎 **Query: {table}** where {concept_column} matches "{concept_search}"
+
+No results found.
+
+Matching concepts searched:
+{chr(10).join([f'- {name} (ID: {cid})' for cid, name in concept_names.items()])}"""
+        
+        # Format results
+        result_str = df.head(50).to_string(index=False)
+        if len(df) > 50:
+            result_str += f"\n... ({len(df)} total rows, showing first 50)"
+        
+        return f"""{banner}
+🔎 **Query: {table}** where {concept_column} matches "{concept_search}"
+
+Concepts matched:
+{chr(10).join([f'- {name} (ID: {cid})' for cid, name in concept_names.items()])}
+
+**Results ({len(df)} rows):**
+
+{result_str}"""
+        
+    except Exception as e:
+        logger.error(f"Query with concepts failed: {e}")
+        return f"{banner}\n❌ Query failed: {str(e)}"
+
+
+# ==========================================
 # SERVER INITIALIZATION
 # ==========================================
 
