@@ -112,14 +112,12 @@ Copy the output (e.g., `/opt/homebrew/bin/python3`).
 - `get_database_schema`: List all available tables
 - `get_table_info`: Get table schema and sample data
 
-### Text-Based Search (No Vocabulary Tables Needed)
-- `search_by_source_text`: Search using original text values (e.g., "ECMO", "sepsis")
+### Concept Lookup (Uses AmsterdamUMCdb Dictionary)
+- `lookup_concept`: Get name for concept ID (e.g., 8507 → "MALE")
+- `search_concepts`: Find concepts by name (e.g., "ECMO" → concept IDs)
 
-### OMOP Vocabulary Tools (Requires vocabulary tables - may not be available)
-- `lookup_concept`: Get name for concept ID
-- `search_concepts`: Find concepts by name
-- `get_concept_descendants`: Find child concepts
-- `query_with_concepts`: Query using concept names
+### Text-Based Search (Fallback Method)
+- `search_by_source_text`: Search using original text values when concept IDs unknown
 
 ### Clinical Data Summaries
 - `get_patient_count`: Total patient count
