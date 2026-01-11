@@ -119,30 +119,132 @@ UMCDB_TABLES = {
     },
 }
 
-# OMOP Vocabulary Tables
-# These tables allow translation between concept IDs and human-readable names
-OMOP_VOCAB_TABLES = {
-    "concept": {
-        "description": "Master list of all OMOP concepts with names and domains",
-        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#concept",
-        "key_columns": ["concept_id", "concept_name", "domain_id", "vocabulary_id", "concept_class_id"],
-    },
-    "concept_relationship": {
-        "description": "Relationships between concepts (hierarchical, mappings)",
-        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#concept_relationship",
-        "key_columns": ["concept_id_1", "concept_id_2", "relationship_id"],
-    },
-    "concept_ancestor": {
-        "description": "Hierarchical ancestry of concepts",
-        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#concept_ancestor",
-        "key_columns": ["ancestor_concept_id", "descendant_concept_id", "min_levels_of_separation"],
-    },
-    "concept_synonym": {
-        "description": "Alternative names/synonyms for concepts",
-        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#concept_synonym",
-        "key_columns": ["concept_id", "concept_synonym_name"],
-    },
-}
+# OMOP Vocabulary - AmsterdamUMCdb Dictionary
+# Since vocabulary tables aren't in the dataset, we use the public dictionary
+AMSTERDAMUMCDB_DICTIONARY_URL = "https://raw.githubusercontent.com/AmsterdamUMC/AmsterdamUMCdb/master/amsterdamumcdb/dictionary/dictionary.csv"
+
+# Cache for dictionary (loaded once per session)
+_dictionary_cache = None
+
+
+def get_amsterdamumcdb_dictionary():
+    """
+    Load AmsterdamUMCdb concept dictionary from GitHub.
+    
+    This is EULA-compliant as:
+    - Dictionary is publicly available (no credentials needed)
+    - Contains only medical terminology (no patient data)
+    - No PHI/PII information
+    
+    Returns:
+        pandas.DataFrame with concept mappings
+    """
+    global _dictionary_cache
+    
+    if _dictionary_cache is not None:
+        return _dictionary_cache
+    
+    try:
+        import pandas as pd
+        import requests
+        from io import StringIO
+        
+        logger.info("Downloading AmsterdamUMCdb dictionary from GitHub...")
+        
+        # Download dictionary CSV
+        response = requests.get(AMSTERDAMUMCDB_DICTIONARY_URL, timeout=30)
+        response.raise_for_status()
+        
+        # Parse CSV
+        csv_data = StringIO(response.text)
+        df = pd.read_csv(csv_data)
+        
+        # Cache it
+        _dictionary_cache = df
+        
+        logger.info(f"Dictionary loaded: {len(df)} concept mappings")
+        return df
+        
+    except Exception as e:
+        logger.error(f"Failed to load dictionary: {e}")
+        raise RuntimeError(
+            f"Could not load AmsterdamUMCdb dictionary: {e}. "
+            "This is required for concept name lookups."
+        )
+
+
+def lookup_concept_in_dictionary(concept_id: int):
+    """
+    Look up concept name from dictionary.
+    
+    Args:
+        concept_id: OMOP concept ID
+        
+    Returns:
+        dict with concept details or None if not found
+    """
+    import pandas as pd
+    
+    df = get_amsterdamumcdb_dictionary()
+    
+    # Find matching concept
+    matches = df[df['concept_id'] == concept_id]
+    
+    if matches.empty:
+        return None
+    
+    # Return first match (there may be multiple source mappings)
+    row = matches.iloc[0]
+    return {
+        'concept_id': int(row['concept_id']),
+        'concept_name': str(row['concept_name']),
+        'domain_id': str(row['domain_id']),
+        'vocabulary_id': str(row['vocabulary_id']) if pd.notna(row['vocabulary_id']) else None,
+        'source_code_description': str(row['source_code_description']) if pd.notna(row['source_code_description']) else None,
+    }
+
+
+def search_concepts_in_dictionary(search_term: str, domain: str | None = None, limit: int = 20):
+    """
+    Search for concepts by name in dictionary.
+    
+    Args:
+        search_term: Text to search for
+        domain: Optional domain filter (Gender, Visit, Procedure, etc.)
+        limit: Maximum results
+        
+    Returns:
+        list of matching concept dicts
+    """
+    import pandas as pd
+    
+    df = get_amsterdamumcdb_dictionary()
+    
+    # Search in concept_name and source_code_description
+    mask = (
+        df['concept_name'].str.contains(search_term, case=False, na=False) |
+        df['source_code_description'].str.contains(search_term, case=False, na=False)
+    )
+    
+    # Apply domain filter if specified
+    if domain:
+        mask = mask & (df['domain_id'].str.contains(domain, case=False, na=False))
+    
+    matches = df[mask].drop_duplicates(subset=['concept_id'])
+    
+    # Limit results
+    matches = matches.head(limit)
+    
+    results = []
+    for _, row in matches.iterrows():
+        results.append({
+            'concept_id': int(row['concept_id']),
+            'concept_name': str(row['concept_name']),
+            'domain_id': str(row['domain_id']),
+            'source_code_description': str(row['source_code_description']) if pd.notna(row['source_code_description']) else None,
+        })
+    
+    return results
 
 # BigQuery Configuration
 # The dataset location should be provided by datathon organizers

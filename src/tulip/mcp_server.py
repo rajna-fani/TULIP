@@ -707,7 +707,138 @@ def get_security_info() -> str:
 
 # ==========================================
 # OMOP VOCABULARY TOOLS
+# NOTE: Van Gogh dataset only includes clinical tables, not vocabulary tables
+# These tools require concept tables which may not be available
 # ==========================================
+
+@mcp.tool()
+def search_by_source_text(
+    table: str,
+    search_term: str,
+    additional_filters: str | None = None,
+    limit: int = 100
+) -> str:
+    """🔍 Search clinical data using original text values (works without vocabulary tables).
+
+    **When to use:** Find procedures, conditions, drugs, or measurements by searching their 
+    original text descriptions (not OMOP concept IDs).
+
+    **Examples:**
+    - search_by_source_text("procedure_occurrence", "ECMO")
+    - search_by_source_text("condition_occurrence", "sepsis")
+    - search_by_source_text("drug_exposure", "aspirin")
+    - search_by_source_text("measurement", "heart rate")
+
+    Args:
+        table: Table to search (procedure_occurrence, condition_occurrence, drug_exposure, measurement)
+        search_term: Text to search for in source_value columns
+        additional_filters: Optional SQL WHERE conditions
+        limit: Maximum rows (default: 100, max: 500)
+
+    Returns:
+        Aggregated results with source values and counts
+    """
+    banner = _get_status_banner()
+    
+    # Validate table
+    valid_tables = {
+        "procedure_occurrence": "procedure_source_value",
+        "condition_occurrence": "condition_source_value",
+        "drug_exposure": "drug_source_value",
+        "measurement": "measurement_source_value"
+    }
+    
+    if table.lower() not in valid_tables:
+        return f"{banner}\n❌ Invalid table. Use one of: {', '.join(valid_tables.keys())}"
+    
+    source_column = valid_tables[table.lower()]
+    
+    if limit > 500:
+        limit = 500
+    
+    try:
+        config = get_bigquery_config()
+        dataset_project = config.get("dataset_project", config["project"])
+        location = config.get("location", "EU")
+        
+        # Escape search term for SQL
+        safe_term = search_term.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
+        
+        # Build WHERE clause
+        where_clause = f"LOWER({source_column}) LIKE LOWER('%{safe_term}%')"
+        
+        if additional_filters:
+            # Basic validation
+            dangerous = ["DROP", "DELETE", "INSERT", "UPDATE", "TRUNCATE", "--", ";"]
+            if any(d.lower() in additional_filters.lower() for d in dangerous):
+                return f"{banner}\n❌ Invalid filter: potentially dangerous SQL detected"
+            where_clause += f" AND ({additional_filters})"
+        
+        # Aggregated query to respect privacy
+        query = f"""
+        SELECT 
+            {source_column},
+            COUNT(DISTINCT person_id) as patient_count,
+            COUNT(*) as event_count
+        FROM `{dataset_project}.{config['dataset']}.{table}`
+        WHERE {where_clause}
+        GROUP BY {source_column}
+        HAVING COUNT(DISTINCT person_id) >= 5
+        ORDER BY patient_count DESC
+        LIMIT {limit}
+        """
+        
+        # Security check
+        is_safe, msg, _ = enforce_security(query)
+        if not is_safe:
+            return f"{banner}\n❌ **Security Error:** {msg}"
+        
+        from google.cloud import bigquery
+        job_config = bigquery.QueryJobConfig()
+        result = _bq_client.query(query, job_config=job_config, location=location).result()
+        df = result.to_dataframe()
+        
+        if df.empty:
+            return f"""{banner}
+🔍 **Search: "{search_term}"** in {table}
+
+No results found or groups < 5 patients (privacy filter).
+
+Try:
+- Different spelling or terminology
+- More general search term
+- Different table"""
+        
+        # Format results
+        total_patients = df['patient_count'].sum()
+        total_events = df['event_count'].sum()
+        
+        result_text = []
+        for _, row in df.head(20).iterrows():
+            result_text.append(
+                f"| {row[source_column][:50]} | {row['patient_count']} | {row['event_count']} |"
+            )
+        
+        return f"""{banner}
+🔍 **Search: "{search_term}"** in {table}
+
+Found {len(df)} distinct values (showing top 20):
+
+| Source Value | Patients | Events |
+|-------------|----------|--------|
+{chr(10).join(result_text)}
+
+**Summary:**
+- Total distinct patients: {total_patients}
+- Total events: {total_events}
+- Groups with ≥5 patients: {len(df)}
+
+💡 Use these source values to refine your queries."""
+        
+    except Exception as e:
+        logger.error(f"Source text search failed: {e}")
+        return f"{banner}\n❌ Search failed: {str(e)}"
+
 
 @mcp.tool()
 def lookup_concept(concept_id: int) -> str:
@@ -716,56 +847,36 @@ def lookup_concept(concept_id: int) -> str:
     **When to use:** When you see a concept_id in query results and want to know what it means.
 
     **Examples:**
-    - concept_id 8507 → "Male"
-    - concept_id 8532 → "Female"
-    - concept_id 4329847 → "Sepsis"
+    - concept_id 8507 → "MALE"
+    - concept_id 8532 → "FEMALE"
 
     Args:
         concept_id: The OMOP concept ID to look up
 
     Returns:
-        Concept name, domain, and vocabulary information
+        Concept name, domain, and source description
     """
     banner = _get_status_banner()
     
     try:
-        config = get_bigquery_config()
-        dataset_project = config.get("dataset_project", config["project"])
-        location = config.get("location", "EU")
+        from tulip.config import lookup_concept_in_dictionary
         
-        query = f"""
-        SELECT 
-            concept_id,
-            concept_name,
-            domain_id,
-            vocabulary_id,
-            concept_class_id,
-            standard_concept
-        FROM `{dataset_project}.{config['dataset']}.concept`
-        WHERE concept_id = {int(concept_id)}
-        """
+        result = lookup_concept_in_dictionary(int(concept_id))
         
-        from google.cloud import bigquery
-        job_config = bigquery.QueryJobConfig()
-        result = _bq_client.query(query, job_config=job_config, location=location).result()
+        if result is None:
+            return f"{banner}\n❌ Concept ID {concept_id} not found in AmsterdamUMCdb dictionary."
         
-        rows = list(result)
-        if not rows:
-            return f"{banner}\n❌ Concept ID {concept_id} not found in vocabulary."
-        
-        row = rows[0]
         return f"""{banner}
 🔍 **Concept Lookup: {concept_id}**
 
 | Field | Value |
 |-------|-------|
-| **Name** | {row.concept_name} |
-| **Domain** | {row.domain_id} |
-| **Vocabulary** | {row.vocabulary_id} |
-| **Class** | {row.concept_class_id} |
-| **Standard** | {'Yes' if row.standard_concept == 'S' else 'No'} |
+| **Name** | {result['concept_name']} |
+| **Domain** | {result['domain_id']} |
+| **Vocabulary** | {result['vocabulary_id'] or 'N/A'} |
+| **Original Description** | {result['source_code_description'] or 'N/A'} |
 
-💡 Use `search_concepts('{row.concept_name}')` to find related concepts."""
+💡 Use `search_concepts('{result['concept_name']}')` to find related concepts."""
         
     except Exception as e:
         logger.error(f"Concept lookup failed: {e}")
@@ -778,18 +889,18 @@ def search_concepts(
     domain: str | None = None,
     limit: int = 20
 ) -> str:
-    """🔎 Search for OMOP concepts by name.
+    """🔎 Search for OMOP concepts by name using AmsterdamUMCdb dictionary.
 
     **When to use:** When you want to find the concept_id for a condition, drug, measurement, etc.
 
     **Examples:**
-    - search_concepts("sepsis") → Find sepsis-related concepts
-    - search_concepts("aspirin", domain="Drug") → Find aspirin drug concepts
-    - search_concepts("heart rate", domain="Measurement") → Find heart rate measurements
+    - search_concepts("male") → Find gender concepts
+    - search_concepts("ECMO", domain="Procedure") → Find ECMO procedure concepts
+    - search_concepts("sepsis", domain="Condition") → Find sepsis-related concepts
 
     Args:
-        search_term: Text to search for (searches concept names and synonyms)
-        domain: Optional filter by domain (Drug, Condition, Measurement, Procedure, etc.)
+        search_term: Text to search for (searches concept names and source descriptions)
+        domain: Optional filter by domain (Gender, Visit, Procedure, Condition, Drug, Measurement, etc.)
         limit: Maximum results to return (default: 20, max: 50)
 
     Returns:
@@ -801,73 +912,38 @@ def search_concepts(
         limit = 50
     
     try:
-        config = get_bigquery_config()
-        dataset_project = config.get("dataset_project", config["project"])
-        location = config.get("location", "EU")
+        from tulip.config import search_concepts_in_dictionary
         
-        # Escape search term for SQL
-        safe_term = search_term.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
+        results = search_concepts_in_dictionary(search_term, domain, limit)
         
-        domain_filter = ""
-        if domain:
-            safe_domain = domain.replace("'", "''")
-            domain_filter = f"AND domain_id = '{safe_domain}'"
-        
-        query = f"""
-        SELECT DISTINCT
-            c.concept_id,
-            c.concept_name,
-            c.domain_id,
-            c.vocabulary_id,
-            c.concept_class_id,
-            c.standard_concept
-        FROM `{dataset_project}.{config['dataset']}.concept` c
-        LEFT JOIN `{dataset_project}.{config['dataset']}.concept_synonym` cs
-            ON c.concept_id = cs.concept_id
-        WHERE (
-            LOWER(c.concept_name) LIKE LOWER('%{safe_term}%')
-            OR LOWER(cs.concept_synonym_name) LIKE LOWER('%{safe_term}%')
-        )
-        {domain_filter}
-        AND c.standard_concept = 'S'
-        ORDER BY 
-            CASE WHEN LOWER(c.concept_name) = LOWER('{safe_term}') THEN 0 ELSE 1 END,
-            LENGTH(c.concept_name)
-        LIMIT {limit}
-        """
-        
-        from google.cloud import bigquery
-        job_config = bigquery.QueryJobConfig()
-        result = _bq_client.query(query, job_config=job_config, location=location).result()
-        
-        rows = list(result)
-        if not rows:
+        if not results:
             return f"""{banner}
 🔎 **Search: "{search_term}"** {f'(domain: {domain})' if domain else ''}
 
-No matching concepts found. Try:
+No matching concepts found in AmsterdamUMCdb dictionary. Try:
 - Different spelling
 - More general term
-- Remove domain filter"""
+- Remove domain filter
+- Check available domains: Gender, Visit, Procedure, Condition, Drug, Measurement"""
         
         results_text = []
-        for row in rows:
-            std = "✓" if row.standard_concept == 'S' else ""
+        for r in results:
+            source_desc = r['source_code_description'][:30] if r['source_code_description'] else ''
             results_text.append(
-                f"| {row.concept_id} | {row.concept_name[:40]} | {row.domain_id} | {row.vocabulary_id} | {std} |"
+                f"| {r['concept_id']} | {r['concept_name'][:30]} | {r['domain_id']} | {source_desc} |"
             )
         
         return f"""{banner}
 🔎 **Search: "{search_term}"** {f'(domain: {domain})' if domain else ''}
 
-Found {len(rows)} concepts:
+Found {len(results)} concepts:
 
-| ID | Name | Domain | Vocabulary | Std |
-|----|------|--------|------------|-----|
+| ID | Name | Domain | Original Description |
+|----|------|--------|---------------------|
 {chr(10).join(results_text)}
 
 💡 Use `lookup_concept(concept_id)` for full details.
-💡 Use `get_concept_descendants(concept_id)` to find related concepts."""
+💡 Use these concept IDs in your queries."""
         
     except Exception as e:
         logger.error(f"Concept search failed: {e}")

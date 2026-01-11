@@ -60,6 +60,7 @@ dependencies = [
     "cryptography>=41.0.0",  # Cryptographic operations
     "python-jose[cryptography]>=3.3.0",  # JWT support
     "httpx>=0.24.0",  # HTTP client for OAuth2
+    "requests>=2.31.0",  # HTTP requests for dictionary download
 ]
 
 [dependency-groups]
