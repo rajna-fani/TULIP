@@ -130,17 +130,19 @@ def get_bigquery_table_path(table_name: str) -> str:
     Get fully qualified BigQuery table path.
     
     Format: `project.dataset.table`
+    Supports dataset in different project (dataset_project.dataset.table)
     """
-    project = os.getenv("TULIP_BQ_PROJECT", DEFAULT_BIGQUERY_PROJECT)
-    dataset = os.getenv("TULIP_BQ_DATASET", DEFAULT_BIGQUERY_DATASET)
+    config = get_bigquery_config()
+    dataset_project = config.get("dataset_project", config["project"])
+    dataset = config["dataset"]
     
-    if not project or not dataset:
+    if not dataset_project or not dataset:
         raise ValueError(
             "BigQuery project and dataset must be configured. "
             "Set TULIP_BQ_PROJECT and TULIP_BQ_DATASET environment variables."
         )
     
-    return f"`{project}.{dataset}.{table_name}`"
+    return f"`{dataset_project}.{dataset}.{table_name}`"
 
 
 def get_available_tables() -> list[str]:
@@ -160,8 +162,10 @@ def get_table_info(table_name: str) -> dict | None:
 def _get_default_runtime_config() -> dict:
     """Default runtime configuration."""
     return {
-        "bigquery_project": "",
+        "bigquery_project": "",  # Project for authentication/billing
+        "bigquery_dataset_project": "",  # Project where dataset lives (if different)
         "bigquery_dataset": "",
+        "bigquery_location": "EU",  # Default location (EU, US, etc.)
         "query_limit_default": 100,
         "query_limit_max": 1000,
         # SECURITY: Never log query results
@@ -203,9 +207,14 @@ def get_bigquery_config() -> dict:
     """Get BigQuery configuration from environment and config file."""
     config = load_runtime_config()
     
+    project = os.getenv("TULIP_BQ_PROJECT", config.get("bigquery_project", ""))
+    dataset_project = os.getenv("TULIP_BQ_DATASET_PROJECT", config.get("bigquery_dataset_project", ""))
+    
     return {
-        "project": os.getenv("TULIP_BQ_PROJECT", config.get("bigquery_project", "")),
+        "project": project,  # Project for authentication/billing
+        "dataset_project": dataset_project if dataset_project else project,  # Project where dataset lives
         "dataset": os.getenv("TULIP_BQ_DATASET", config.get("bigquery_dataset", "")),
+        "location": os.getenv("TULIP_BQ_LOCATION", config.get("bigquery_location", "EU")),
     }
 
 

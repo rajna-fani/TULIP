@@ -132,8 +132,10 @@ def _execute_bigquery_query(sql_query: str) -> str:
         # Execute query
         from google.cloud import bigquery
         
+        config = get_bigquery_config()
         job_config = bigquery.QueryJobConfig()
-        query_job = _bq_client.query(sql_query, job_config=job_config)
+        location = config.get("location", "EU")  # Set dataset location
+        query_job = _bq_client.query(sql_query, job_config=job_config, location=location)
         df = query_job.to_dataframe()
         
         execution_time = (time.time() - start_time) * 1000
@@ -313,9 +315,11 @@ def get_table_info(table_name: str, show_sample: bool = True) -> str:
         full_table_path = get_bigquery_table_path(table_name.lower())
         
         # Get column information from BigQuery
+        config = get_bigquery_config()
+        dataset_project = config.get("dataset_project", config["project"])
         schema_query = f"""
         SELECT column_name, data_type, is_nullable
-        FROM `{get_bigquery_config()['project']}.{get_bigquery_config()['dataset']}.INFORMATION_SCHEMA.COLUMNS`
+        FROM `{dataset_project}.{config['dataset']}.INFORMATION_SCHEMA.COLUMNS`
         WHERE table_name = '{table_name.lower()}'
         ORDER BY ordinal_position
         """

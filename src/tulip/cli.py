@@ -159,6 +159,21 @@ def config_cmd(
             help="BigQuery dataset name containing AmsterdamUMCdb.",
         ),
     ] = None,
+    dataset_project: Annotated[
+        str | None,
+        typer.Option(
+            "--dataset-project",
+            help="Project where dataset lives (if different from auth project).",
+        ),
+    ] = None,
+    location: Annotated[
+        str | None,
+        typer.Option(
+            "--location",
+            "-l",
+            help="BigQuery dataset location (e.g., EU, US). Default: EU.",
+        ),
+    ] = None,
     lmstudio_host: Annotated[
         str | None,
         typer.Option(
@@ -213,6 +228,16 @@ def config_cmd(
         config["bigquery_dataset"] = dataset
         modified = True
         typer.secho(f"✅ BigQuery dataset set to: {dataset}", fg=typer.colors.GREEN)
+    
+    if dataset_project:
+        config["bigquery_dataset_project"] = dataset_project
+        modified = True
+        typer.secho(f"✅ Dataset project set to: {dataset_project}", fg=typer.colors.GREEN)
+    
+    if location:
+        config["bigquery_location"] = location
+        modified = True
+        typer.secho(f"✅ BigQuery location set to: {location}", fg=typer.colors.GREEN)
     
     if lmstudio_host:
         config["lmstudio_host"] = lmstudio_host
@@ -282,23 +307,26 @@ def validate_cmd():
             client = bigquery.Client(project=config["project"])
             
             # Try a simple query
+            dataset_project = config.get("dataset_project", config["project"])
             test_query = f"""
             SELECT table_name 
-            FROM `{config['project']}.{config['dataset']}.INFORMATION_SCHEMA.TABLES`
+            FROM `{dataset_project}.{config['dataset']}.INFORMATION_SCHEMA.TABLES`
             LIMIT 1
             """
             
-            result = client.query(test_query).result()
+            job_config = bigquery.QueryJobConfig()
+            location = config.get("location", "EU")
+            result = client.query(test_query, job_config=job_config, location=location).result()
             typer.secho("   ✅ BigQuery connection successful", fg=typer.colors.GREEN)
             
             # List available tables
             typer.echo("\n4️⃣  Checking available tables...")
             tables_query = f"""
             SELECT table_name 
-            FROM `{config['project']}.{config['dataset']}.INFORMATION_SCHEMA.TABLES`
+            FROM `{dataset_project}.{config['dataset']}.INFORMATION_SCHEMA.TABLES`
             ORDER BY table_name
             """
-            tables = [row.table_name for row in client.query(tables_query).result()]
+            tables = [row.table_name for row in client.query(tables_query, job_config=job_config, location=location).result()]
             
             if tables:
                 typer.secho(f"   ✅ Found {len(tables)} tables:", fg=typer.colors.GREEN)

@@ -1,458 +1,198 @@
-# 🌷 TULIP: Tool for UMCdb Language Interface and Processing
+# TULIP: Tool for UMCdb Language Interface and Processing
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![EULA Compliant](https://img.shields.io/badge/EULA-Compliant-green.svg)](#eula-compliance)
+A secure MCP (Model Context Protocol) server for querying AmsterdamUMCdb via local LLMs. Designed for the ESICM Datathon (Van Gogh snippet).
 
-> **🎨 Van Gogh Datathon Edition**
-> 
-> A secure MCP (Model Context Protocol) server for querying AmsterdamUMCdb via **local LLMs only**.
-> Designed for the ESICM Datathon with full EULA compliance.
+**⚠️ CRITICAL:** This tool complies with the AmsterdamUMCdb End User License Agreement. All code must be made available to AmsterdamUMCdb administrators. Use only with local LLMs (e.g., LMStudio). Never send queries or data to external LLM APIs.
 
-## ⚠️ CRITICAL SECURITY NOTICE
+## Features
 
-**READ BEFORE USE:**
+- Query AmsterdamUMCdb (OMOP CDM) via BigQuery
+- EULA-compliant security controls (k-anonymity, rate limiting, query validation)
+- Works with local LLMs through LMStudio
+- Dynamic schema discovery
+- Aggregated query functions for safe data exploration
 
-1. **LOCAL MODELS ONLY**: This tool is designed exclusively for use with local LLMs (e.g., LMStudio with gpt-oss-20b). **Never send queries or data to external APIs or cloud-based LLMs.**
+## Prerequisites
 
-2. **NO DATA EXPORT**: The AmsterdamUMCdb data must remain on Google BigQuery. Do not attempt to download, copy, or export any data.
-
-3. **NO RE-IDENTIFICATION**: Any attempt to re-identify patients is strictly prohibited and blocked by this tool.
-
-4. **CODE AVAILABILITY**: Per EULA requirements, all code must be made available to AmsterdamUMCdb administrators.
-
----
-
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [EULA Compliance](#eula-compliance)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage with LMStudio](#usage-with-lmstudio)
-- [Available MCP Tools](#available-mcp-tools)
-- [Security Features](#security-features)
-- [Privacy Best Practices](#privacy-best-practices)
-- [Troubleshooting](#troubleshooting)
-- [License](#license)
-
----
-
-## Overview
-
-TULIP provides a secure interface for querying AmsterdamUMCdb through the Model Context Protocol (MCP), enabling local LLMs to help analyze ICU data while maintaining strict privacy and security controls.
-
-### Key Features
-
-- 🔒 **Security-First Design**: Multiple layers of protection against data leakage
-- 🏥 **OMOP CDM Support**: Works with AmsterdamUMCdb's 7 OMOP tables
-- 🤖 **Local LLM Integration**: Designed for LMStudio and gpt-oss-20b
-- 📊 **Privacy-Preserving Queries**: Enforces aggregation and k-anonymity
-- ⏱️ **Rate Limiting**: Prevents data extraction attempts
-- 📝 **Audit Logging**: Tracks queries for compliance (without logging results)
-
-### AmsterdamUMCdb Tables
-
-AmsterdamUMCdb follows the [OMOP Common Data Model v5.4](https://ohdsi.github.io/CommonDataModel/cdm54.html) standard with 7 core tables:
-
-| Table | Description | OMOP Docs |
-|-------|-------------|-----------|
-| `person` | Patient demographics (de-identified) | [person](https://ohdsi.github.io/CommonDataModel/cdm54.html#person) |
-| `visit_occurrence` | ICU admission records | [visit_occurrence](https://ohdsi.github.io/CommonDataModel/cdm54.html#visit_occurrence) |
-| `death` | Mortality records | [death](https://ohdsi.github.io/CommonDataModel/cdm54.html#death) |
-| `condition_occurrence` | Diagnoses and conditions | [condition_occurrence](https://ohdsi.github.io/CommonDataModel/cdm54.html#condition_occurrence) |
-| `drug_exposure` | Medication records | [drug_exposure](https://ohdsi.github.io/CommonDataModel/cdm54.html#drug_exposure) |
-| `procedure_occurrence` | Clinical procedures | [procedure_occurrence](https://ohdsi.github.io/CommonDataModel/cdm54.html#procedure_occurrence) |
-| `measurement` | ~1B clinical observations | [measurement](https://ohdsi.github.io/CommonDataModel/cdm54.html#measurement) |
-
-**Note:** Use the `get_table_info('table_name')` MCP tool to see all columns and their data types (queried dynamically from BigQuery).
-
----
-
-## EULA Compliance
-
-TULIP is designed to comply with all terms of the AmsterdamUMCdb End User License Agreement:
-
-| EULA Requirement | TULIP Implementation |
-|------------------|---------------------|
-| ✅ Only use via Google Cloud Platform | BigQuery-only access, no local storage |
-| ✅ January-February 2026 only | Time-period enforcement in code |
-| ✅ No downloading/copying | No data caching or export functionality |
-| ✅ No sharing access | Per-user GCP authentication required |
-| ✅ Non-commercial research only | Intended for datathon use |
-| ✅ No re-identification attempts | Query validation blocks re-id patterns |
-| ✅ Make code available | Open source on GitHub |
-| ✅ Allow co-authorship | Contact info in README |
-
-### Automatic EULA Protections
-
-1. **Query Validation**: All queries are checked for re-identification risks
-2. **Result Filtering**: Small groups (< 5 records) are suppressed
-3. **Audit Trail**: Query metadata logged for accountability
-4. **Rate Limiting**: 100 queries/hour, 10 queries/minute
-5. **Row Limits**: Maximum 1000 rows per query
-
----
+- Python 3.10+
+- Google Cloud SDK (`gcloud`)
+- BigQuery access credentials
+- LMStudio (for local LLM usage)
+- Project ID, dataset project ID, dataset name, and location from datathon organizers
 
 ## Installation
 
-### Prerequisites
-
-1. **Python 3.10+**
-2. **Google Cloud SDK** with authentication configured
-3. **LMStudio** with a local model (e.g., gpt-oss-20b)
-4. **Approved AmsterdamUMCdb access** (datathon registration)
-
-### Install TULIP
+### Option 1: Install from GitHub
 
 ```bash
-# Clone the repository
+pip install git+https://github.com/[your-username]/TULIP.git
+```
+
+### Option 2: Clone and Install Locally
+
+```bash
 git clone https://github.com/[your-username]/TULIP.git
 cd TULIP
-
-# Install with uv (recommended)
-uv pip install -e .
-
-# Or with pip
-pip install -e .
+pip install --break-system-packages -e .
 ```
 
-### Verify Installation
-
-```bash
-tulip --version
-tulip status
-```
-
----
+**macOS users:** Add `--break-system-packages` flag if using Homebrew Python.
 
 ## Configuration
 
-### 1. Set BigQuery Credentials
+### 1. Authenticate with Google Cloud
 
 ```bash
-# Authenticate with Google Cloud
 gcloud auth application-default login
-
-# Set project and dataset (provided by datathon organizers)
-export TULIP_BQ_PROJECT="your-project-id"
-export TULIP_BQ_DATASET="amsterdamumcdb"
 ```
 
 ### 2. Configure TULIP
 
-```bash
-# Interactive configuration
-tulip config --project-id your-project-id --dataset amsterdamumcdb
+You need 4 values from the datathon organizers:
+- **Project ID** (for authentication/billing, e.g., `cmi-lab`)
+- **Dataset Project** (where data lives, e.g., `amsterdamumcdb`)
+- **Dataset Name** (e.g., `van_gogh_2026_datathon`)
+- **Location** (data region, e.g., `eu`)
 
-# Verify configuration
+Set them with:
+
+```bash
+tulip config \
+  --project-id YOUR_PROJECT_ID \
+  --dataset-project YOUR_DATASET_PROJECT \
+  --dataset YOUR_DATASET_NAME \
+  --location YOUR_LOCATION
+```
+
+Verify it works:
+
+```bash
 tulip validate
 ```
 
-### 3. Generate MCP Configuration
+## LMStudio Setup
+
+### 1. Get your Python path
 
 ```bash
-# For LMStudio
-tulip mcp-config lmstudio
-
-# Save to file
-tulip mcp-config --output mcp_config.json
+which python3
 ```
 
----
+Copy the output (e.g., `/opt/homebrew/bin/python3`).
 
-## Usage with LMStudio
+### 2. Add TULIP to LMStudio
 
-### Step 1: Download a Local Model
-
-1. Open LMStudio
-2. Download a model (recommended: **gpt-oss-20b** or similar)
-3. Load the model
-
-### Step 2: Configure MCP Server
-
-Add TULIP to your LMStudio MCP configuration:
+1. Open LMStudio → Settings → MCP Servers
+2. Add this configuration (replace `YOUR_PYTHON_PATH` with the path from step 1):
 
 ```json
 {
   "mcpServers": {
     "tulip": {
-      "command": "python",
+      "command": "YOUR_PYTHON_PATH",
       "args": ["-m", "tulip.mcp_server"],
       "env": {
-        "TULIP_BQ_PROJECT": "your-project-id",
-        "TULIP_BQ_DATASET": "amsterdamumcdb"
+        "TULIP_BQ_PROJECT": "",
+        "TULIP_BQ_DATASET_PROJECT": "",
+        "TULIP_BQ_DATASET": "",
+        "TULIP_BQ_LOCATION": ""
       }
     }
   }
 }
 ```
 
-Or use uvx:
-
-```json
-{
-  "mcpServers": {
-    "tulip": {
-      "command": "uvx",
-      "args": ["tulip-mcp"],
-      "env": {
-        "TULIP_BQ_PROJECT": "your-project-id",
-        "TULIP_BQ_DATASET": "amsterdamumcdb"
-      }
-    }
-  }
-}
-```
-
-### Step 3: Start Using
-
-Ask your local LLM questions like:
-- "What tables are available in AmsterdamUMCdb?"
-- "Show me the patient demographics distribution"
-- "What are the most common diagnoses in the ICU?"
-- "Calculate the average length of stay by gender"
-
----
+3. Save and restart LMStudio
+4. Load a model (e.g., gpt-oss-20b)
+5. Test: "What tables are available?"
 
 ## Available MCP Tools
 
-### 🔍 `get_database_schema()`
-Discover available tables and their descriptions.
-
-### 📋 `get_table_info(table_name, show_sample=True)`
-Explore a specific table's structure and sample data.
-
-### 🚀 `execute_umcdb_query(sql_query)`
-Execute custom SQL queries (with security validation).
-
-**Requirements:**
-- Must include `LIMIT` clause (max 1000)
-- Prefer aggregated queries
-- Direct person_id lookups are blocked
-
-### 👥 `get_patient_demographics(limit=100)`
-Aggregated patient demographics statistics.
-
-### 📈 `get_measurement_statistics(measurement_concept_id=None, limit=50)`
-Statistics for clinical measurements (vitals, labs).
-
-### 💊 `get_drug_exposure_summary(limit=50)`
-Aggregated medication usage patterns.
-
-### 🏥 `get_condition_prevalence(limit=50)`
-Prevalence of diagnoses and conditions.
-
-### 📊 `get_mortality_statistics()`
-Aggregated mortality statistics by demographic factors.
-
-### 🔒 `get_security_info()`
-Current security status and rate limiting info.
-
----
+- `get_database_schema`: List all available tables with descriptions
+- `get_table_info`: Get detailed schema information for a specific table
+- `execute_umcdb_query`: Execute validated SQL queries (aggregated only)
+- `get_patient_count`: Get total patient count
+- `get_demographics_summary`: Summary statistics for patient demographics
+- `get_visit_summary`: ICU admission statistics
+- `get_condition_summary`: Diagnosis/condition statistics
+- `get_medication_summary`: Medication administration statistics
+- `get_procedure_summary`: Clinical procedure statistics
+- `get_measurement_summary`: Clinical measurement statistics
 
 ## Security Features
 
-### SQL Injection Protection
-- Query parsing and validation
-- Blocks multiple statements
-- Rejects dangerous patterns
+- **SQL Injection Prevention**: Query parsing and validation
+- **Re-identification Protection**: Blocks queries targeting individual patients
+- **K-anonymity**: Minimum group size of 5 for aggregated results
+- **Rate Limiting**: 100 queries/hour, 10 queries/minute
+- **Query Audit Logging**: Metadata-only logging (no results or patient data)
+- **Row Limits**: Maximum 1000 rows per query
 
-### Re-identification Prevention
-```python
-# BLOCKED: Direct patient lookup
-SELECT * FROM person WHERE person_id = 12345
+## EULA Compliance
 
-# BLOCKED: Finding unique records
-SELECT * FROM person HAVING COUNT(*) = 1
+This tool adheres to the AmsterdamUMCdb End User License Agreement:
 
-# BLOCKED: Extreme value attacks
-SELECT MIN(year_of_birth) FROM person
+- ✅ Uses only local LLMs (no external API calls)
+- ✅ Aggregated queries only (no individual patient records)
+- ✅ K-anonymity enforcement (minimum group size: 5)
+- ✅ Privacy-preserving audit logging (metadata only)
+- ✅ Code available to AmsterdamUMCdb administrators
+- ✅ Access restricted to datathon period
 
-# ALLOWED: Aggregated analysis
-SELECT gender_concept_id, COUNT(*) FROM person 
-GROUP BY 1 HAVING COUNT(*) >= 5 LIMIT 100
+## Command-Line Interface
+
+```bash
+# Check status
+tulip status
+
+# View configuration
+tulip config --show
+
+# Validate setup
+tulip validate
+
+# Generate LMStudio config
+tulip mcp-config lmstudio
+
+# View security information
+tulip security
 ```
 
-### K-anonymity Enforcement
-- Minimum group size: 5 records
-- Small groups automatically suppressed
-- Results validated before returning
+## Project Structure
 
-### Rate Limiting
-| Limit | Value |
-|-------|-------|
-| Per minute | 10 queries |
-| Per hour | 100 queries |
-| Max rows | 1000 per query |
-
-### Audit Logging
-- Logs query metadata (NOT results)
-- Tracks tables accessed
-- Records execution time
-- Sanitizes error messages
-
----
-
-## Privacy Best Practices
-
-### ✅ DO
-
-```sql
--- Aggregate data
-SELECT gender_concept_id, COUNT(*) as n, AVG(value) as mean
-FROM measurement
-GROUP BY gender_concept_id
-HAVING COUNT(*) >= 5
-LIMIT 100
-
--- Use statistical functions
-SELECT 
-  measurement_concept_id,
-  APPROX_QUANTILES(value_as_number, 4) as quartiles
-FROM measurement
-GROUP BY 1
-LIMIT 50
 ```
-
-### ❌ DON'T
-
-```sql
--- Don't look up individual patients
-SELECT * FROM person WHERE person_id = 12345
-
--- Don't export raw data
-SELECT * FROM measurement LIMIT 10000
-
--- Don't find unique records
-SELECT * FROM person GROUP BY 1 HAVING COUNT(*) = 1
-
--- Don't combine quasi-identifiers without aggregation
-SELECT year_of_birth, gender_concept_id FROM person
+TULIP/
+├── src/tulip/
+│   ├── __init__.py          # Package initialization
+│   ├── config.py            # Configuration management
+│   ├── security.py          # Security controls and validation
+│   ├── mcp_server.py        # MCP server implementation
+│   └── cli.py               # Command-line interface
+├── pyproject.toml           # Project metadata and dependencies
+└── README.md                # This file
 ```
-
----
 
 ## Troubleshooting
 
-### BigQuery Connection Issues
+**Installation fails:** Add `--break-system-packages` flag (macOS with Homebrew Python)
 
-```bash
-# Re-authenticate
-gcloud auth application-default login
+**LMStudio can't find TULIP:** Use the correct Python path from `which python3` in LMStudio config
 
-# Verify project access
-gcloud projects list
-
-# Test connection
-tulip validate
-```
-
-### Permission Denied
-
-Contact datathon organizers to verify:
-1. Your GCP account is granted access
-2. The project ID is correct
-3. The dataset name is correct
-
-### Rate Limit Exceeded
-
-Wait for the rate limit window to reset:
-- Per minute: 60 seconds
-- Per hour: Wait or reduce query frequency
-
-### Query Blocked
-
-If a query is blocked, it may be due to:
-1. Re-identification risk detected
-2. Missing LIMIT clause
-3. SQL injection pattern detected
-
-Use the suggested alternatives in the error message.
-
----
-
-## Development
-
-### Running Tests
-
-```bash
-pytest tests/
-```
-
-### Code Style
-
-```bash
-ruff check src/tulip/
-ruff format src/tulip/
-```
-
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Ensure all security features remain intact
-4. Submit a pull request
-
----
+**Can't connect to BigQuery:** Run `gcloud auth application-default login` and `tulip validate`
 
 ## License
 
-### Tool License
-
-MIT License - See [LICENSE](LICENSE) for details.
-
-### Data License
-
-AmsterdamUMCdb data is subject to its own [End User License Agreement](https://amsterdammedicaldatascience.nl/).
-You must have approved access to use this tool with the database.
-
----
-
-## Acknowledgments
-
-- **AmsterdamUMCdb Team**: For making this valuable dataset available
-- **ESICM**: For organizing the Van Gogh Datathon
-- **Amsterdam Medical Data Science**: For data governance and access management
-- **M3 Project**: Foundation code for MCP integration
-
----
-
-## Contact
-
-- **AmsterdamUMCdb Access**: access@amsterdammedicaldatascience.nl
-- **Security Issues**: Report via GitHub Issues
-- **Datathon Support**: Contact organizers via datathon channels
-
----
+This project is provided for the ESICM Datathon. All code must be made available to AmsterdamUMCdb administrators as per EULA requirements.
 
 ## Citation
 
-If you use this tool in your research, please cite:
+If you use TULIP in your research, please cite:
 
-```bibtex
-@software{tulip2026,
-  title = {TULIP: Tool for UMCdb Language Interface and Processing},
-  author = {[Your Team]},
-  year = {2026},
-  url = {https://github.com/[your-username]/TULIP}
-}
+```
+TULIP: Tool for UMCdb Language Interface and Processing
+ESICM Datathon 2026 - Van Gogh Snippet
 ```
 
-And cite AmsterdamUMCdb:
+## Support
 
-```bibtex
-@article{amsterdamumcdb2021,
-  title = {AmsterdamUMCdb: Accessible and Structured Medical Data from the ICU},
-  author = {Thoral, Patrick J and others},
-  journal = {Critical Care Medicine},
-  year = {2021}
-}
-```
-
----
-
-<p align="center">
-  🌷 TULIP - Secure ICU Data Analysis for the Van Gogh Datathon 🎨
-</p>
-
+For datathon-specific questions, contact the datathon organizers. For technical issues, check the troubleshooting section above.
