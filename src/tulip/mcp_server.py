@@ -333,8 +333,6 @@ def get_table_info(table_name: str, show_sample: bool = True) -> str:
 
 {info['description']}
 
-**Key Columns:** {', '.join(info['key_columns'])}
-
 **Notes:** {info['notes']}
 
 ⚠️ Could not fetch live schema: {msg}"""
@@ -371,8 +369,7 @@ def get_table_info(table_name: str, show_sample: bool = True) -> str:
 
 📋 **Static Table Info:**
 Table: {table_name}
-Description: {info['description']}
-Key columns: {', '.join(info['key_columns'])}"""
+Description: {info['description']}"""
 
 
 @mcp.tool()
@@ -928,9 +925,13 @@ No matching concepts found in AmsterdamUMCdb dictionary. Try:
         
         results_text = []
         for r in results:
-            source_desc = r['source_code_description'][:30] if r['source_code_description'] else ''
+            cid = r['concept_id'] if r['concept_id'] else 'UNMAPPED'
+            name = r['concept_name'][:40] if r['concept_name'] else 'N/A'
+            domain = r['domain_id'][:15] if r['domain_id'] else 'Unknown'
+            source = r['source_code_description'][:40] if r['source_code_description'] else ''
+            
             results_text.append(
-                f"| {r['concept_id']} | {r['concept_name'][:30]} | {r['domain_id']} | {source_desc} |"
+                f"| {cid} | {name} | {domain} | {source} |"
             )
         
         return f"""{banner}
@@ -938,12 +939,12 @@ No matching concepts found in AmsterdamUMCdb dictionary. Try:
 
 Found {len(results)} concepts:
 
-| ID | Name | Domain | Original Description |
-|----|------|--------|---------------------|
+| ID | Name | Domain | Source Description |
+|----|------|--------|-------------------|
 {chr(10).join(results_text)}
 
-💡 Use `lookup_concept(concept_id)` for full details.
-💡 Use these concept IDs in your queries."""
+💡 Mapped concepts have numeric IDs - use these in queries.
+💡 UNMAPPED concepts exist in source data but have no standard ID."""
         
     except Exception as e:
         logger.error(f"Concept search failed: {e}")

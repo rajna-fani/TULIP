@@ -230,18 +230,20 @@ def search_concepts_in_dictionary(search_term: str, domain: str | None = None, l
     if domain:
         mask = mask & (df['domain_id'].str.contains(domain, case=False, na=False))
     
-    matches = df[mask].drop_duplicates(subset=['concept_id'])
-    
-    # Limit results
-    matches = matches.head(limit)
+    matches = df[mask].head(limit)
     
     results = []
     for _, row in matches.iterrows():
+        # Handle both mapped and unmapped concepts
+        cid = row['concept_id']
+        is_mapped = pd.notna(cid) and cid > 0
+        
         results.append({
-            'concept_id': int(row['concept_id']),
-            'concept_name': str(row['concept_name']),
-            'domain_id': str(row['domain_id']),
+            'concept_id': int(cid) if is_mapped else None,
+            'concept_name': str(row['concept_name']) if pd.notna(row['concept_name']) else 'N/A',
+            'domain_id': str(row['domain_id']) if pd.notna(row['domain_id']) else 'Unknown',
             'source_code_description': str(row['source_code_description']) if pd.notna(row['source_code_description']) else None,
+            'is_mapped': is_mapped,
         })
     
     return results
