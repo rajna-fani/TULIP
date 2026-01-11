@@ -1,44 +1,38 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
-*.egg-info/
-.installed.cfg
-*.egg
-*.whl
 
 # Distribution / packaging
+.Python
 build/
 develop-eggs/
 dist/
 downloads/
 eggs/
+.eggs/
 lib/
 lib64/
 parts/
 sdist/
 var/
 wheels/
-MANIFEST
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Virtual environments
-.env
-.*venv*
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-.python-version
+# PyInstaller
+*.manifest
+*.spec
 
-# IDE specific files
-.idea/
-.vscode/
-*.sublime-project
-*.sublime-workspace
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Test and coverage reports
+# Unit test / coverage reports
 htmlcov/
 .tox/
 .nox/
@@ -48,35 +42,68 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
+*.py,cover
 .hypothesis/
 .pytest_cache/
-junit.xml
 
-# Logs and temporary files
-*.log
-*.tmp
+# Translations
+*.mo
+*.pot
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.idea/
+.vscode/
 *.swp
+*.swo
+*~
 
-# SQLite databases (if you don't want to commit local test/demo dbs)
-*.db
-*.db-journal*
-mimic*.db
+# Jupyter Notebook
+.ipynb_checkpoints
 
-# Configuration files
-config.json
-*config*.json
+# pyenv
+.python-version
 
-# Operating System specific files
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# uv
+.uv/
+
+# OS files
 .DS_Store
 Thumbs.db
-Desktop.ini
 
-# MyPy
-.mypy_cache/
+# TULIP specific
+# Configuration files (may contain project IDs)
+.tulip/config.json
 
-# Ruff
-.ruff_cache/
+# Audit logs (contain query metadata)
+*.audit.log
 
-# Datasets and other large files
+# Never commit credentials
+*.json
+!package.json
+!tsconfig.json
+credentials/
+service-account*.json
+
+# BigQuery credentials
+gcloud/
+.gcloud/
+
+# Data files (EULA: no data storage)
+*.parquet
+*.csv
+*.duckdb
 data/
-m3_data/

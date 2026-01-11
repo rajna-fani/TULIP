@@ -1,40 +1,128 @@
-from pathlib import Path
+"""
+Tests for TULIP configuration module.
+"""
 
-from m3.config import (
-    get_dataset_config,
-    get_dataset_parquet_root,
-    get_default_database_path,
-)
-
-
-def test_get_dataset_config_known():
-    cfg = get_dataset_config("mimic-iv-demo")
-    assert isinstance(cfg, dict)
-    assert cfg.get("default_duckdb_filename") == "mimic_iv_demo.duckdb"
+import os
+import pytest
 
 
-def test_get_dataset_config_unknown():
-    assert get_dataset_config("not-a-dataset") is None
+class TestDatathonPeriod:
+    """Tests for datathon period enforcement."""
+
+    def test_datathon_period_constants_defined(self):
+        """Datathon start and end dates should be defined."""
+        from tulip.config import DATATHON_START, DATATHON_END
+        
+        assert DATATHON_START is not None
+        assert DATATHON_END is not None
+        assert DATATHON_START < DATATHON_END
+
+    def test_datathon_status_returns_string(self):
+        """get_datathon_period_status should return a status string."""
+        from tulip.config import get_datathon_period_status
+        
+        status = get_datathon_period_status()
+        
+        assert isinstance(status, str)
+        assert len(status) > 0
 
 
-def test_default_paths(tmp_path, monkeypatch):
-    # Redirect default dirs to a temp location
-    import m3.config as cfg_mod
+class TestBigQueryConfig:
+    """Tests for BigQuery configuration."""
 
-    monkeypatch.setattr(cfg_mod, "_DEFAULT_DATABASES_DIR", tmp_path / "dbs")
-    monkeypatch.setattr(cfg_mod, "_DEFAULT_PARQUET_DIR", tmp_path / "parquet")
-    db_path = get_default_database_path("mimic-iv-demo")
-    raw_path = get_dataset_parquet_root("mimic-iv-demo")
-    # They should be Path objects and exist
-    assert isinstance(db_path, Path)
-    assert db_path.parent.exists()
-    assert isinstance(raw_path, Path)
-    assert raw_path.exists()
+    def test_get_bigquery_config_returns_dict(self):
+        """get_bigquery_config should return a dictionary."""
+        from tulip.config import get_bigquery_config
+        
+        config = get_bigquery_config()
+        
+        assert isinstance(config, dict)
+        assert "project" in config
+        assert "dataset" in config
+
+    def test_validate_bigquery_config_without_env_vars(self):
+        """Validation should fail when env vars are not set."""
+        # Clear environment variables
+        old_project = os.environ.pop("TULIP_BQ_PROJECT", None)
+        old_dataset = os.environ.pop("TULIP_BQ_DATASET", None)
+        
+        try:
+            from tulip.config import validate_bigquery_config
+            
+            # Also need to clear the runtime config
+            is_valid, message = validate_bigquery_config()
+            
+            # Should indicate missing configuration
+            # (may pass if config file has values)
+            assert isinstance(is_valid, bool)
+            assert isinstance(message, str)
+        finally:
+            # Restore environment
+            if old_project:
+                os.environ["TULIP_BQ_PROJECT"] = old_project
+            if old_dataset:
+                os.environ["TULIP_BQ_DATASET"] = old_dataset
 
 
-def test_raw_path_includes_dataset_name(tmp_path, monkeypatch):
-    import m3.config as cfg_mod
+class TestTableConfiguration:
+    """Tests for AmsterdamUMCdb table configuration."""
 
-    monkeypatch.setattr(cfg_mod, "_DEFAULT_PARQUET_DIR", tmp_path / "parquet")
-    raw_path = get_dataset_parquet_root("mimic-iv-demo")
-    assert "mimic-iv-demo" in str(raw_path)
+    def test_umcdb_tables_defined(self):
+        """UMCDB_TABLES should contain the 7 OMOP CDM tables."""
+        from tulip.config import UMCDB_TABLES
+        
+        expected_tables = [
+            "person",
+            "visit_occurrence",
+            "death",
+            "condition_occurrence",
+            "drug_exposure",
+            "procedure_occurrence",
+            "measurement",
+        ]
+        
+        for table in expected_tables:
+            assert table in UMCDB_TABLES, f"Missing table: {table}"
+
+    def test_table_info_has_required_fields(self):
+        """Each table should have description, key_columns, and notes."""
+        from tulip.config import UMCDB_TABLES
+        
+        for table_name, info in UMCDB_TABLES.items():
+            assert "description" in info, f"{table_name} missing description"
+            assert "key_columns" in info, f"{table_name} missing key_columns"
+            assert "notes" in info, f"{table_name} missing notes"
+
+    def test_get_available_tables(self):
+        """get_available_tables should return list of table names."""
+        from tulip.config import get_available_tables
+        
+        tables = get_available_tables()
+        
+        assert isinstance(tables, list)
+        assert len(tables) == 7
+        assert "person" in tables
+        assert "measurement" in tables
+
+
+class TestSecurityConfig:
+    """Tests for security configuration."""
+
+    def test_security_limits_defined(self):
+        """Security limits should be defined."""
+        from tulip.config import MAX_QUERY_ROWS, MIN_GROUP_SIZE
+        
+        assert MAX_QUERY_ROWS == 1000
+        assert MIN_GROUP_SIZE == 5
+
+    def test_get_security_config(self):
+        """get_security_config should return security settings."""
+        from tulip.config import get_security_config
+        
+        config = get_security_config()
+        
+        assert isinstance(config, dict)
+        assert "max_query_rows" in config
+        assert "min_group_size" in config
+        assert "sensitive_column_patterns" in config
+

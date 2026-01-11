@@ -1,607 +1,458 @@
-# M3: MIMIC-IV + MCP + Models 🏥🤖
+# 🌷 TULIP: Tool for UMCdb Language Interface and Processing
 
-<div align="center">
-  <img src="webapp/public/m3_logo_transparent.png" alt="M3 Logo" width="300"/>
-</div>
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![EULA Compliant](https://img.shields.io/badge/EULA-Compliant-green.svg)](#eula-compliance)
 
-> **Query MIMIC-IV medical data using natural language through MCP clients**
+> **🎨 Van Gogh Datathon Edition**
+> 
+> A secure MCP (Model Context Protocol) server for querying AmsterdamUMCdb via **local LLMs only**.
+> Designed for the ESICM Datathon with full EULA compliance.
 
-<a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white"></a>
-<a href="https://modelcontextprotocol.io/"><img alt="MCP" src="https://img.shields.io/badge/MCP-Compatible-green?logo=ai&logoColor=white"></a>
-<a href="https://github.com/rafiattrach/m3/actions/workflows/tests.yaml"><img alt="Tests" src="https://github.com/rafiattrach/m3/actions/workflows/tests.yaml/badge.svg"></a>
-<a href="https://github.com/rafiattrach/m3/actions/workflows/pre-commit.yaml"><img alt="Code Quality" src="https://github.com/rafiattrach/m3/actions/workflows/pre-commit.yaml/badge.svg"></a>
-<a href="https://github.com/rafiattrach/m3/pulls"><img alt="PRs Welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
+## ⚠️ CRITICAL SECURITY NOTICE
 
-Transform medical data analysis with AI! Ask questions about MIMIC-IV data in plain English and get instant insights. Choose between local demo data (free) or full cloud dataset (BigQuery).
+**READ BEFORE USE:**
 
-## Features
+1. **LOCAL MODELS ONLY**: This tool is designed exclusively for use with local LLMs (e.g., LMStudio with gpt-oss-20b). **Never send queries or data to external APIs or cloud-based LLMs.**
 
-- 🔍 **Natural Language Queries**: Ask questions about MIMIC-IV data in plain English
-- 🏠 **Local DuckDB + Parquet**: Fast local queries for demo and full dataset using Parquet files with DuckDB views
-- ☁️ **BigQuery Support**: Access full MIMIC-IV dataset on Google Cloud
-- 🔒 **Enterprise Security**: OAuth2 authentication with JWT tokens and rate limiting
-- 🛡️ **SQL Injection Protection**: Read-only queries with comprehensive validation
+2. **NO DATA EXPORT**: The AmsterdamUMCdb data must remain on Google BigQuery. Do not attempt to download, copy, or export any data.
 
-## 🚀 Quick Start
+3. **NO RE-IDENTIFICATION**: Any attempt to re-identify patients is strictly prohibited and blocked by this tool.
 
-> 📺 **Prefer video tutorials?** Check out [step-by-step video guides](https://rafiattrach.github.io/m3/) covering setup, PhysioNet configuration, and more.
-
-### Install uv (required for `uvx`)
-
-We use `uvx` to run the MCP server. Install `uv` from the official installer, then verify with `uv --version`.
-
-**macOS:**
-```bash
-brew install uv
-```
-
-**Linux (or macOS without Homebrew):**
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# macOS - enable for GUI apps like Claude Desktop:
-sudo ln -s $(which uv) $(which uvx) /usr/local/bin/
-```
-
-**Windows (PowerShell):**
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Verify installation:
-```bash
-uv --version
-```
-
-### BigQuery Setup (Optional - Full Dataset)
-
-**Skip this if using DuckDB demo database.**
-
-1. **Install Google Cloud SDK:**
-   - macOS: `brew install google-cloud-sdk`
-   - Windows/Linux: https://cloud.google.com/sdk/docs/install
-
-2. **Authenticate:**
-   ```bash
-   gcloud auth application-default login
-   ```
-   *Opens your browser - choose the Google account with BigQuery access to MIMIC-IV.*
-
-### M3 Initialization
-
-**Supported clients:** [Claude Desktop](https://www.claude.com/download), [Cursor](https://cursor.com/download), [Goose](https://block.github.io/goose/), and [more](https://github.com/punkpeye/awesome-mcp-clients).
-
-<table>
-<tr>
-<td width="50%">
-
-**DuckDB (Demo or Full Dataset)**
-
-
-To create a m3 directory and navigate into it run:
-```shell
-mkdir m3 && cd m3
-```
-If you want to use the full dataset, download it manually from [PhysioNet](https://physionet.org/content/mimiciv/3.1/) and place it into `m3/m3_data/raw`. For using the demo set you can continue and run:
-
-```shell
-uv init && uv add m3-mcp && \
-uv run m3 init DATASET_NAME && uv run m3 config --quick
-```
-Replace `DATASET_NAME` with `mimic-iv-demo` or `mimic-iv-full` and copy & paste the output of this command into your client config JSON file.
-
-*Demo dataset (16MB raw download size) downloads automatically on first query.*
-
-*Full dataset (10.6GB raw download size) needs to be downloaded manually.*
-
-</td>
-<td width="50%">
-
-**BigQuery (Full Dataset)**
-
-Requires GCP credentials and PhysioNet access.
-
-Paste this into your client config JSON file:
-
-```json
-{
-  "mcpServers": {
-    "m3": {
-      "command": "uvx",
-      "args": ["m3-mcp"],
-      "env": {
-        "M3_BACKEND": "bigquery",
-        "M3_PROJECT_ID": "your-project-id"
-      }
-    }
-  }
-}
-```
-
-*Replace `your-project-id` with your Google Cloud project ID.*
-
-</td>
-</tr>
-</table>
-
-**That's it!** Restart your MCP client and ask:
-- "What tools do you have for MIMIC-IV data?"
-- "Show me patient demographics from the ICU"
-- "What is the race distribution in admissions?"
+4. **CODE AVAILABILITY**: Per EULA requirements, all code must be made available to AmsterdamUMCdb administrators.
 
 ---
 
-## Backend Comparison
+## 📋 Table of Contents
 
-| Feature | DuckDB (Demo) | DuckDB (Full) | BigQuery (Full) |
-|---------|---------------|---------------|-----------------|
-| **Cost** | Free | Free | BigQuery usage fees |
-| **Setup** | Zero config | Manual Download | GCP credentials required |
-| **Data Size** | 100 patients, 275 admissions | 365k patients, 546k admissions | 365k patients, 546k admissions |
-| **Speed** | Fast (local) | Fast (local) | Network latency |
-| **Use Case** | Learning, development | Research (local) | Research, production |
+- [Overview](#overview)
+- [EULA Compliance](#eula-compliance)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage with LMStudio](#usage-with-lmstudio)
+- [Available MCP Tools](#available-mcp-tools)
+- [Security Features](#security-features)
+- [Privacy Best Practices](#privacy-best-practices)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ---
 
-## Alternative Installation Methods
+## Overview
 
-> Already have Docker or prefer pip? Here are other ways to run m3:
+TULIP provides a secure interface for querying AmsterdamUMCdb through the Model Context Protocol (MCP), enabling local LLMs to help analyze ICU data while maintaining strict privacy and security controls.
 
-### 🐳 Docker (No Python Required)
+### Key Features
 
-<table>
-<tr>
-<td width="50%">
+- 🔒 **Security-First Design**: Multiple layers of protection against data leakage
+- 🏥 **OMOP CDM Support**: Works with AmsterdamUMCdb's 7 OMOP tables
+- 🤖 **Local LLM Integration**: Designed for LMStudio and gpt-oss-20b
+- 📊 **Privacy-Preserving Queries**: Enforces aggregation and k-anonymity
+- ⏱️ **Rate Limiting**: Prevents data extraction attempts
+- 📝 **Audit Logging**: Tracks queries for compliance (without logging results)
 
-**DuckDB (Local):**
-```bash
-git clone https://github.com/rafiattrach/m3.git && cd m3
-docker build -t m3:lite --target lite .
-docker run -d --name m3-server m3:lite tail -f /dev/null
-```
+### AmsterdamUMCdb Tables
 
-</td>
-<td width="50%">
+AmsterdamUMCdb follows the [OMOP Common Data Model v5.4](https://ohdsi.github.io/CommonDataModel/cdm54.html) standard with 7 core tables:
 
-**BigQuery:**
-```bash
-git clone https://github.com/rafiattrach/m3.git && cd m3
-docker build -t m3:bigquery --target bigquery .
-docker run -d --name m3-server \
-  -e M3_BACKEND=bigquery \
-  -e M3_PROJECT_ID=your-project-id \
-  -v $HOME/.config/gcloud:/root/.config/gcloud:ro \
-  m3:bigquery tail -f /dev/null
-```
+| Table | Description | OMOP Docs |
+|-------|-------------|-----------|
+| `person` | Patient demographics (de-identified) | [person](https://ohdsi.github.io/CommonDataModel/cdm54.html#person) |
+| `visit_occurrence` | ICU admission records | [visit_occurrence](https://ohdsi.github.io/CommonDataModel/cdm54.html#visit_occurrence) |
+| `death` | Mortality records | [death](https://ohdsi.github.io/CommonDataModel/cdm54.html#death) |
+| `condition_occurrence` | Diagnoses and conditions | [condition_occurrence](https://ohdsi.github.io/CommonDataModel/cdm54.html#condition_occurrence) |
+| `drug_exposure` | Medication records | [drug_exposure](https://ohdsi.github.io/CommonDataModel/cdm54.html#drug_exposure) |
+| `procedure_occurrence` | Clinical procedures | [procedure_occurrence](https://ohdsi.github.io/CommonDataModel/cdm54.html#procedure_occurrence) |
+| `measurement` | ~1B clinical observations | [measurement](https://ohdsi.github.io/CommonDataModel/cdm54.html#measurement) |
 
-</td>
-</tr>
-</table>
+**Note:** Use the `get_table_info('table_name')` MCP tool to see all columns and their data types (queried dynamically from BigQuery).
 
-**MCP config (same for both):**
-```json
-{
-  "mcpServers": {
-    "m3": {
-      "command": "docker",
-      "args": ["exec", "-i", "m3-server", "python", "-m", "m3.mcp_server"]
-    }
-  }
-}
-```
+---
 
-Stop: `docker stop m3-server && docker rm m3-server`
+## EULA Compliance
 
-### pip Install + CLI Tools
+TULIP is designed to comply with all terms of the AmsterdamUMCdb End User License Agreement:
 
-```bash
-pip install m3-mcp
-```
+| EULA Requirement | TULIP Implementation |
+|------------------|---------------------|
+| ✅ Only use via Google Cloud Platform | BigQuery-only access, no local storage |
+| ✅ January-February 2026 only | Time-period enforcement in code |
+| ✅ No downloading/copying | No data caching or export functionality |
+| ✅ No sharing access | Per-user GCP authentication required |
+| ✅ Non-commercial research only | Intended for datathon use |
+| ✅ No re-identification attempts | Query validation blocks re-id patterns |
+| ✅ Make code available | Open source on GitHub |
+| ✅ Allow co-authorship | Contact info in README |
 
-> 💡 **CLI commands:** Run `m3 --help` to see all available options.
+### Automatic EULA Protections
 
-**Useful CLI commands:**
-- `m3 init mimic-iv-demo` - Download demo database
-- `m3 config` - Generate MCP configuration interactively
-- `m3 config claude --backend bigquery --project-id YOUR_PROJECT_ID` - Quick BigQuery setup
+1. **Query Validation**: All queries are checked for re-identification risks
+2. **Result Filtering**: Small groups (< 5 records) are suppressed
+3. **Audit Trail**: Query metadata logged for accountability
+4. **Rate Limiting**: 100 queries/hour, 10 queries/minute
+5. **Row Limits**: Maximum 1000 rows per query
 
-**Example MCP config:**
-```json
-{
-  "mcpServers": {
-    "m3": {
-      "command": "m3-mcp-server",
-      "env": {
-        "M3_BACKEND": "duckdb"
-      }
-    }
-  }
-}
-```
+---
 
-### Local Development
+## Installation
 
-For contributors:
+### Prerequisites
 
-```bash
-git clone https://github.com/rafiattrach/m3.git && cd m3
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-pre-commit install
-```
+1. **Python 3.10+**
+2. **Google Cloud SDK** with authentication configured
+3. **LMStudio** with a local model (e.g., gpt-oss-20b)
+4. **Approved AmsterdamUMCdb access** (datathon registration)
 
-**MCP config:**
-```json
-{
-  "mcpServers": {
-    "m3": {
-      "command": "/path/to/m3/.venv/bin/python",
-      "args": ["-m", "m3.mcp_server"],
-      "cwd": "/path/to/m3",
-      "env": {
-        "M3_BACKEND": "duckdb"
-      }
-    }
-  }
-}
-```
+### Install TULIP
 
-#### Using `UV` (Recommended)
-Assuming you have [UV](https://docs.astral.sh/uv/getting-started/installation/) installed.
-
-**Step 1: Clone and Navigate**
 ```bash
 # Clone the repository
-git clone https://github.com/rafiattrach/m3.git
-cd m3
+git clone https://github.com/[your-username]/TULIP.git
+cd TULIP
+
+# Install with uv (recommended)
+uv pip install -e .
+
+# Or with pip
+pip install -e .
 ```
 
-**Step 2: Create `UV` Virtual Environment**
-```bash
-# Create virtual environment
-uv venv
-```
-
-**Step 3: Install M3**
-```bash
-uv sync
-# Do not forget to use `uv run` to any subsequent commands to ensure you're using the `uv` virtual environment
-```
-
-### 🗄️ Database Configuration
-
-After installation, choose your data source:
-
-#### Option A: Local Demo (DuckDB + Parquet)
-
-**Perfect for learning and development - completely free!**
-
-1. **Initialize demo dataset**:
-   ```bash
-   m3 init mimic-iv-demo
-   ```
-
-2. **Setup MCP Client**:
-   ```bash
-   m3 config
-   ```
-
-   *Alternative: For Claude Desktop specifically:*
-   ```bash
-   m3 config claude --backend duckdb --db-path /Users/you/path/to/m3_data/databases/mimic_iv_demo.duckdb
-   ```
-
-5. **Restart your MCP client** and ask:
-
-   - "What tools do you have for MIMIC-IV data?"
-   - "Show me patient demographics from the ICU"
-
-#### Option B: Local Full Dataset (DuckDB + Parquet)
-
-**Run the entire MIMIC-IV dataset locally with DuckDB views over Parquet.**
-
-1. **Acquire CSVs** (requires PhysioNet credentials):
-   - Download the official MIMIC-IV CSVs from PhysioNet and place them under:
-     - `/Users/you/path/to/m3/m3_data/raw_files/mimic-iv-full/hosp/`
-     - `/Users/you/path/to/m3/m3_data/raw_files/mimic-iv-full/icu/`
-   - Note: `m3 init`'s auto-download function currently only supports the demo dataset. Use your browser or `wget` to obtain the full dataset.
-
-2. **Initialize full dataset**:
-   ```bash
-   m3 init mimic-iv-full
-   ```
-   - This may take up to 30 minutes, depending on your system (e.g. 10 minutes for MacBook Pro M3)
-   - Performance knobs (optional):
-     ```bash
-     export M3_CONVERT_MAX_WORKERS=6   # number of parallel files (default=4)
-     export M3_DUCKDB_MEM=4GB          # DuckDB memory limit per worker (default=3GB)
-     export M3_DUCKDB_THREADS=4        # DuckDB threads per worker (default=2)
-     ```
-     Pay attention to your system specifications, especially if you have enough memory.
-
-3. **Select dataset and verify**:
-   ```bash
-   m3 use full # optional, as this automatically got set to full
-   m3 status
-   ```
-   - Status prints active dataset, local DB path, Parquet presence, quick row counts and total Parquet size.
-
-4. **Configure MCP client** (uses the full local DB):
-   ```bash
-   m3 config
-   # or
-   m3 config claude --backend duckdb --db-path /Users/you/path/to/m3/m3_data/databases/mimic_iv_full.duckdb
-   ```
-
-#### Option C: BigQuery (Full Dataset)
-
-**For researchers needing complete MIMIC-IV data**
-
-##### Prerequisites
-- Google Cloud account and project with billing enabled
-- Access to MIMIC-IV on BigQuery (requires PhysioNet credentialing)
-
-##### Setup Steps
-
-1. **Install Google Cloud CLI**:
-
-   **macOS (with Homebrew):**
-   ```bash
-   brew install google-cloud-sdk
-   ```
-
-   **Windows:** Download from https://cloud.google.com/sdk/docs/install
-
-   **Linux:**
-   ```bash
-   curl https://sdk.cloud.google.com | bash
-   ```
-
-2. **Authenticate**:
-   ```bash
-   gcloud auth application-default login
-   ```
-   *This will open your browser - choose the Google account that has access to your BigQuery project with MIMIC-IV data.*
-
-3. **Setup MCP Client for BigQuery**:
-   ```bash
-   m3 config
-   ```
-
-   *Alternative: For Claude Desktop specifically:*
-   ```bash
-   m3 config claude --backend bigquery --project-id YOUR_PROJECT_ID
-   ```
-
-4. **Test BigQuery Access** - Restart your MCP client and ask:
-   ```
-   Use the get_race_distribution function to show me the top 5 races in MIMIC-IV admissions.
-   ```
-
-## 🔧 Advanced Configuration
-
-Need to configure other MCP clients or customize settings? Use these commands:
-
-### Interactive Configuration (Universal)
-```bash
-m3 config
-```
-Generates configuration for any MCP client with step-by-step guidance.
-
-### Quick Configuration Examples
-```bash
-# Quick universal config with defaults
-m3 config --quick
-
-# Universal config with custom DuckDB database
-m3 config --quick --backend duckdb --db-path /path/to/database.duckdb
-
-# Save config to file for other MCP clients
-m3 config --output my_config.json
-```
-
-### OAuth2 Authentication (Optional)
-
-For production deployments requiring secure access to medical data:
+### Verify Installation
 
 ```bash
-# Enable OAuth2 with Claude Desktop
-m3 config claude --enable-oauth2 \
-  --oauth2-issuer https://your-auth-provider.com \
-  --oauth2-audience m3-api \
-  --oauth2-scopes "read:mimic-data"
-
-# Or configure interactively
-m3 config  # Choose OAuth2 option during setup
+tulip --version
+tulip status
 ```
-
-**Supported OAuth2 Providers:**
-- Auth0, Google Identity Platform, Microsoft Azure AD, Keycloak
-- Any OAuth2/OpenID Connect compliant provider
-
-**Key Benefits:**
-- 🔒 **JWT Token Validation**: Industry-standard security
-- 🎯 **Scope-based Access**: Fine-grained permissions
-- 🛡️ **Rate Limiting**: Abuse protection
-- 📊 **Audit Logging**: Security monitoring
-
-> 📖 **Complete OAuth2 Setup Guide**: See [`docs/OAUTH2_AUTHENTICATION.md`](docs/OAUTH2_AUTHENTICATION.md) for detailed configuration, troubleshooting, and production deployment guidelines.
 
 ---
 
-## 🛠️ Available MCP Tools
+## Configuration
 
-When your MCP client processes questions, it uses these tools automatically:
+### 1. Set BigQuery Credentials
 
-- **get_database_schema**: List all available tables
-- **get_table_info**: Get column info and sample data for a table
-- **execute_mimic_query**: Execute SQL SELECT queries
-- **get_icu_stays**: ICU stay information and length of stay data
-- **get_lab_results**: Laboratory test results
-- **get_race_distribution**: Patient race distribution
-
-## Example Prompts
-
-Try asking your MCP client these questions:
-
-**Demographics & Statistics:**
-
-- `Prompt:` *What is the race distribution in MIMIC-IV admissions?*
-- `Prompt:` *Show me patient demographics for ICU stays*
-- `Prompt:` *How many total admissions are in the database?*
-
-**Clinical Data:**
-
-- `Prompt:` *Find lab results for patient X*
-- `Prompt:` *What lab tests are most commonly ordered?*
-- `Prompt:` *Show me recent ICU admissions*
-
-**Data Exploration:**
-
-- `Prompt:` *What tables are available in the database?*
-- `Prompt:` *What tools do you have for MIMIC-IV data?*
-
-## 🎩 Pro Tips
-
-- Do you want to pre-approve the usage of all tools in Claude Desktop? Use the prompt below and then select **Always Allow**
-  - `Prompt:` *Can you please call all your tools in a logical sequence?*
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-**Local "Parquet not found" or view errors:**
-Rerun the `m3 init` command for your chosen dataset.
-
-**MCP client server not starting:**
-1. Check your MCP client logs (for Claude Desktop: Help → View Logs)
-2. Verify configuration file location and format
-3. Restart your MCP client completely
-
-### OAuth2 Authentication Issues
-
-**"Missing OAuth2 access token" errors:**
 ```bash
-# Set your access token
-export M3_OAUTH2_TOKEN="Bearer your-access-token-here"
+# Authenticate with Google Cloud
+gcloud auth application-default login
+
+# Set project and dataset (provided by datathon organizers)
+export TULIP_BQ_PROJECT="your-project-id"
+export TULIP_BQ_DATASET="amsterdamumcdb"
 ```
 
-**"OAuth2 authentication failed" errors:**
-- Verify your token hasn't expired
-- Check that required scopes are included in your token
-- Ensure your OAuth2 provider configuration is correct
+### 2. Configure TULIP
 
-**Rate limit exceeded:**
-- Wait for the rate limit window to reset
-- Contact your administrator to adjust limits if needed
+```bash
+# Interactive configuration
+tulip config --project-id your-project-id --dataset amsterdamumcdb
 
-> 🔧 **OAuth2 Troubleshooting**: See [`OAUTH2_AUTHENTICATION.md`](docs/OAUTH2_AUTHENTICATION.md) for detailed OAuth2 troubleshooting and configuration guides.
+# Verify configuration
+tulip validate
+```
 
-### BigQuery Issues
+### 3. Generate MCP Configuration
 
-**"Access Denied" errors:**
-- Ensure you have MIMIC-IV access on PhysioNet
-- Verify your Google Cloud project has BigQuery API enabled
-- Check that you're authenticated: `gcloud auth list`
+```bash
+# For LMStudio
+tulip mcp-config lmstudio
 
-**"Dataset not found" errors:**
-- Confirm your project ID is correct
-- Ensure you have access to `physionet-data` project
+# Save to file
+tulip mcp-config --output mcp_config.json
+```
 
-**Authentication issues:**
+---
+
+## Usage with LMStudio
+
+### Step 1: Download a Local Model
+
+1. Open LMStudio
+2. Download a model (recommended: **gpt-oss-20b** or similar)
+3. Load the model
+
+### Step 2: Configure MCP Server
+
+Add TULIP to your LMStudio MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "tulip": {
+      "command": "python",
+      "args": ["-m", "tulip.mcp_server"],
+      "env": {
+        "TULIP_BQ_PROJECT": "your-project-id",
+        "TULIP_BQ_DATASET": "amsterdamumcdb"
+      }
+    }
+  }
+}
+```
+
+Or use uvx:
+
+```json
+{
+  "mcpServers": {
+    "tulip": {
+      "command": "uvx",
+      "args": ["tulip-mcp"],
+      "env": {
+        "TULIP_BQ_PROJECT": "your-project-id",
+        "TULIP_BQ_DATASET": "amsterdamumcdb"
+      }
+    }
+  }
+}
+```
+
+### Step 3: Start Using
+
+Ask your local LLM questions like:
+- "What tables are available in AmsterdamUMCdb?"
+- "Show me the patient demographics distribution"
+- "What are the most common diagnoses in the ICU?"
+- "Calculate the average length of stay by gender"
+
+---
+
+## Available MCP Tools
+
+### 🔍 `get_database_schema()`
+Discover available tables and their descriptions.
+
+### 📋 `get_table_info(table_name, show_sample=True)`
+Explore a specific table's structure and sample data.
+
+### 🚀 `execute_umcdb_query(sql_query)`
+Execute custom SQL queries (with security validation).
+
+**Requirements:**
+- Must include `LIMIT` clause (max 1000)
+- Prefer aggregated queries
+- Direct person_id lookups are blocked
+
+### 👥 `get_patient_demographics(limit=100)`
+Aggregated patient demographics statistics.
+
+### 📈 `get_measurement_statistics(measurement_concept_id=None, limit=50)`
+Statistics for clinical measurements (vitals, labs).
+
+### 💊 `get_drug_exposure_summary(limit=50)`
+Aggregated medication usage patterns.
+
+### 🏥 `get_condition_prevalence(limit=50)`
+Prevalence of diagnoses and conditions.
+
+### 📊 `get_mortality_statistics()`
+Aggregated mortality statistics by demographic factors.
+
+### 🔒 `get_security_info()`
+Current security status and rate limiting info.
+
+---
+
+## Security Features
+
+### SQL Injection Protection
+- Query parsing and validation
+- Blocks multiple statements
+- Rejects dangerous patterns
+
+### Re-identification Prevention
+```python
+# BLOCKED: Direct patient lookup
+SELECT * FROM person WHERE person_id = 12345
+
+# BLOCKED: Finding unique records
+SELECT * FROM person HAVING COUNT(*) = 1
+
+# BLOCKED: Extreme value attacks
+SELECT MIN(year_of_birth) FROM person
+
+# ALLOWED: Aggregated analysis
+SELECT gender_concept_id, COUNT(*) FROM person 
+GROUP BY 1 HAVING COUNT(*) >= 5 LIMIT 100
+```
+
+### K-anonymity Enforcement
+- Minimum group size: 5 records
+- Small groups automatically suppressed
+- Results validated before returning
+
+### Rate Limiting
+| Limit | Value |
+|-------|-------|
+| Per minute | 10 queries |
+| Per hour | 100 queries |
+| Max rows | 1000 per query |
+
+### Audit Logging
+- Logs query metadata (NOT results)
+- Tracks tables accessed
+- Records execution time
+- Sanitizes error messages
+
+---
+
+## Privacy Best Practices
+
+### ✅ DO
+
+```sql
+-- Aggregate data
+SELECT gender_concept_id, COUNT(*) as n, AVG(value) as mean
+FROM measurement
+GROUP BY gender_concept_id
+HAVING COUNT(*) >= 5
+LIMIT 100
+
+-- Use statistical functions
+SELECT 
+  measurement_concept_id,
+  APPROX_QUANTILES(value_as_number, 4) as quartiles
+FROM measurement
+GROUP BY 1
+LIMIT 50
+```
+
+### ❌ DON'T
+
+```sql
+-- Don't look up individual patients
+SELECT * FROM person WHERE person_id = 12345
+
+-- Don't export raw data
+SELECT * FROM measurement LIMIT 10000
+
+-- Don't find unique records
+SELECT * FROM person GROUP BY 1 HAVING COUNT(*) = 1
+
+-- Don't combine quasi-identifiers without aggregation
+SELECT year_of_birth, gender_concept_id FROM person
+```
+
+---
+
+## Troubleshooting
+
+### BigQuery Connection Issues
+
 ```bash
 # Re-authenticate
 gcloud auth application-default login
 
-# Check current authentication
-gcloud auth list
+# Verify project access
+gcloud projects list
+
+# Test connection
+tulip validate
 ```
 
-## For Developers
+### Permission Denied
 
-> See "Local Development" section above for setup instructions.
+Contact datathon organizers to verify:
+1. Your GCP account is granted access
+2. The project ID is correct
+3. The dataset name is correct
+
+### Rate Limit Exceeded
+
+Wait for the rate limit window to reset:
+- Per minute: 60 seconds
+- Per hour: Wait or reduce query frequency
+
+### Query Blocked
+
+If a query is blocked, it may be due to:
+1. Re-identification risk detected
+2. Missing LIMIT clause
+3. SQL injection pattern detected
+
+Use the suggested alternatives in the error message.
+
+---
+
+## Development
 
 ### Running Tests
 
 ```bash
-pytest  # All tests (includes OAuth2 and BigQuery mocks)
-pytest tests/test_mcp_server.py -v  # MCP server tests
-pytest tests/test_oauth2_auth.py -v  # OAuth2 authentication tests
+pytest tests/
 ```
 
-### Test BigQuery Locally
+### Code Style
 
 ```bash
-# Set environment variables
-export M3_BACKEND=bigquery
-export M3_PROJECT_ID=your-project-id
-export GOOGLE_CLOUD_PROJECT=your-project-id
-
-# Optional: Test with OAuth2 authentication
-export M3_OAUTH2_ENABLED=true
-export M3_OAUTH2_ISSUER_URL=https://your-provider.com
-export M3_OAUTH2_AUDIENCE=m3-api
-export M3_OAUTH2_TOKEN="Bearer your-test-token"
-
-# Test MCP server
-m3-mcp-server
+ruff check src/tulip/
+ruff format src/tulip/
 ```
 
-## Roadmap
-
-- 🏠 **Complete Local Full Dataset**: Complete the support for `mimic-iv-full` (Download CLI)
-- 🔧 **Advanced Tools**: More specialized medical data functions
-- 📊 **Visualization**: Built-in plotting and charting tools
-- 🔐 **Enhanced Security**: Role-based access control, audit logging
-- 🌐 **Multi-tenant Support**: Organization-level data isolation
-
-## 🐳 Kubernetes Deployment
-
-Deploy M3 on Kubernetes using Docker images with pre-loaded MIMIC-IV demo database:
-
-```bash
-# Build and push Docker image
-make all  # Will prompt for Docker registry/username
-
-# Or specify registry directly
-make all DOCKER_REGISTRY=your-username DOCKER=podman
-```
-
-The container uses StreamableHTTP transport on port 3000 with path `/sse`. Configure your MCP client to connect to the service endpoint (e.g., `http://m3.kagent.svc.cluster.local:3000/sse` for intra-cluster access).
-
-Helm charts for deploying M3 are available in a separate repository.
-
-## 🤝 Contributing
-
-We welcome contributions! Please:
+### Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Add tests for new functionality
+3. Ensure all security features remain intact
 4. Submit a pull request
-
-## Citation
-
-If you use M3 in your research, please cite:
-
-```bibtex
-@article{attrach2025conversational,
-  title={Conversational LLMs Simplify Secure Clinical Data Access, Understanding, and Analysis},
-  author={Attrach, Rafi Al and Moreira, Pedro and Fani, Rajna and Umeton, Renato and Celi, Leo Anthony},
-  journal={arXiv preprint arXiv:2507.01053},
-  year={2025}
-}
-```
-
-You can also use the "Cite this repository" button at the top of the GitHub page for other formats.
-
-## Related Projects
-
-M3 has been forked and adapted by the community:
-- [MCPStack-MIMIC](https://github.com/MCP-Pipeline/mcpstack-mimic) - Integrates M3 with other MCP servers (Jupyter, sklearn, etc.)
 
 ---
 
-*Built with ❤️ for the medical AI community*
+## License
 
-**Need help?** Open an issue on GitHub or check our troubleshooting guide above.
+### Tool License
+
+MIT License - See [LICENSE](LICENSE) for details.
+
+### Data License
+
+AmsterdamUMCdb data is subject to its own [End User License Agreement](https://amsterdammedicaldatascience.nl/).
+You must have approved access to use this tool with the database.
+
+---
+
+## Acknowledgments
+
+- **AmsterdamUMCdb Team**: For making this valuable dataset available
+- **ESICM**: For organizing the Van Gogh Datathon
+- **Amsterdam Medical Data Science**: For data governance and access management
+- **M3 Project**: Foundation code for MCP integration
+
+---
+
+## Contact
+
+- **AmsterdamUMCdb Access**: access@amsterdammedicaldatascience.nl
+- **Security Issues**: Report via GitHub Issues
+- **Datathon Support**: Contact organizers via datathon channels
+
+---
+
+## Citation
+
+If you use this tool in your research, please cite:
+
+```bibtex
+@software{tulip2026,
+  title = {TULIP: Tool for UMCdb Language Interface and Processing},
+  author = {[Your Team]},
+  year = {2026},
+  url = {https://github.com/[your-username]/TULIP}
+}
+```
+
+And cite AmsterdamUMCdb:
+
+```bibtex
+@article{amsterdamumcdb2021,
+  title = {AmsterdamUMCdb: Accessible and Structured Medical Data from the ICU},
+  author = {Thoral, Patrick J and others},
+  journal = {Critical Care Medicine},
+  year = {2021}
+}
+```
+
+---
+
+<p align="center">
+  🌷 TULIP - Secure ICU Data Analysis for the Van Gogh Datathon 🎨
+</p>
+
