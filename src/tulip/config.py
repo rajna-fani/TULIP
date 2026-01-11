@@ -258,8 +258,8 @@ def get_bigquery_table_path(table_name: str) -> str:
     """
     Get fully qualified BigQuery table path.
     
-    Format: `project.dataset.table`
-    Supports dataset in different project (dataset_project.dataset.table)
+    Format: `project`.`dataset`.`table` (each component backticked separately)
+    Supports dataset in different project.
     """
     config = get_bigquery_config()
     dataset_project = config.get("dataset_project", config["project"])
@@ -271,7 +271,8 @@ def get_bigquery_table_path(table_name: str) -> str:
             "Set TULIP_BQ_PROJECT and TULIP_BQ_DATASET environment variables."
         )
     
-    return f"`{dataset_project}.{dataset}.{table_name}`"
+    # Backtick each component separately to avoid project:dataset interpretation
+    return f"`{dataset_project}`.`{dataset}`.`{table_name}`"
 
 
 def get_available_tables() -> list[str]:
