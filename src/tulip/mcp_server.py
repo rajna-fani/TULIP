@@ -380,8 +380,13 @@ def execute_umcdb_query(sql_query: str) -> str:
 
     **Recommended workflow:**
     1. **See available tables:** Use `get_database_schema()` to list all tables
-    2. **Examine table structure:** Use `get_table_info('table_name')` to see columns
-    3. **Write your SQL query:** Use exact table/column names from exploration
+    2. **Examine table structure:** Use `get_table_info('table_name')` to see columns and get the FULL table path
+    3. **Write your SQL query:** Use the EXACT full table path from `get_table_info()` output
+
+    **CRITICAL: Use the FULL table path shown by get_table_info():**
+    ✅ CORRECT: `SELECT * FROM \`amsterdamumcdb\`.\`van_gogh_2026_datathon\`.\`person\` LIMIT 10`
+    ✅ CORRECT: `SELECT COUNT(DISTINCT person_id) FROM \`amsterdamumcdb\`.\`van_gogh_2026_datathon\`.\`procedure_occurrence\` WHERE procedure_concept_id = 4052536 GROUP BY procedure_concept_id LIMIT 10`
+    ❌ WRONG: `SELECT * FROM person` (missing project and dataset)
 
     **IMPORTANT REQUIREMENTS:**
     - All queries MUST include a LIMIT clause (max 1000 rows)
@@ -394,14 +399,10 @@ def execute_umcdb_query(sql_query: str) -> str:
     - Query metadata is logged (not results) for compliance
 
     Args:
-        sql_query: Your SQL SELECT query (must include LIMIT clause)
+        sql_query: Your SQL SELECT query with FULL table paths (must include LIMIT clause)
 
     Returns:
         Query results or helpful error messages with next steps
-
-    **Example queries:**
-    - `SELECT gender_concept_id, COUNT(*) as n FROM person GROUP BY gender_concept_id LIMIT 10`
-    - `SELECT measurement_concept_id, AVG(value_as_number) FROM measurement GROUP BY 1 LIMIT 20`
     """
     return _execute_bigquery_query(sql_query)
 
