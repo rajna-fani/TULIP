@@ -1,4 +1,4 @@
-# TULIP: Tool for UMCdb Language Interface and Processing
+# 🌷 TULIP: Tool for UMCdb Language Interface and Processing
 
 A secure MCP (Model Context Protocol) server for querying AmsterdamUMCdb via local LLMs. Designed for the ESICM Datathon (Van Gogh snippet).
 
