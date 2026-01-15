@@ -245,11 +245,15 @@ def get_database_schema() -> str:
 
     **When to use:** Start here to understand what tables exist and what data you can query.
 
-    **What this does:** Shows all 7 OMOP CDM tables available in the database with descriptions.
+    **What this does:** Queries BigQuery to show ALL tables that actually exist in the dataset.
 
     **Next steps after using this:**
     - Use `get_table_info(table_name)` to explore a specific table's structure
-    - Common starting points: `person` (demographics), `measurement` (clinical observations)
+    - Common starting points: `person` (demographics), `measurement` (clinical observations), `observation` (procedures/devices), `device_exposure` (medical devices)
+
+    **Important (to avoid tool loops):**
+    - If you already called `get_database_schema()` in this conversation, do NOT call it again.
+      Proceed to `get_table_info(...)` or a query/search instead.
 
     **Privacy Note:** All data is de-identified. Patient IDs are synthetic.
 
@@ -258,23 +262,58 @@ def get_database_schema() -> str:
     """
     banner = _get_status_banner()
     
-    table_list = []
-    for table_name, info in UMCDB_TABLES.items():
-        table_list.append(f"📋 **{table_name}**")
-        table_list.append(f"   {info['description']}")
-        if 'omop_docs' in info:
-            table_list.append(f"   📚 OMOP CDM: {info['omop_docs']}")
-        table_list.append("")
-    
-    tables_text = "\n".join(table_list)
-    
-    return f"""{banner}
-📊 **Available Tables (OMOP CDM Format):**
+    try:
+        # Query BigQuery to get ACTUAL tables in the dataset
+        config = get_bigquery_config()
+        dataset_project = config.get("dataset_project", config["project"])
+        
+        schema_query = f"""
+        SELECT table_name 
+        FROM `{dataset_project}`.`{config['dataset']}`.INFORMATION_SCHEMA.TABLES
+        WHERE table_type = 'BASE TABLE'
+        ORDER BY table_name
+        """
+        
+        from google.cloud import bigquery
+        client = bigquery.Client(project=config["project"], location=config.get("location", "EU"))
+        result = client.query(schema_query, location=config.get("location", "EU")).result()
+        
+        actual_tables = [row.table_name for row in result]
+        
+        # Build simple table list - no hardcoded descriptions
+        table_list = []
+        for table_name in actual_tables:
+            # Optional: add description if we have it in config, but don't require it
+            if table_name in UMCDB_TABLES:
+                table_list.append(f"📋 **{table_name}** - {UMCDB_TABLES[table_name]['description']}")
+            else:
+                table_list.append(f"📋 **{table_name}**")
+        
+        tables_text = "\n".join(table_list)
+        
+        return f"""{banner}
+📊 **Available Tables in Dataset ({len(actual_tables)} tables):**
 
 {tables_text}
-💡 **Tip:** Use `get_table_info('table_name')` to see full column details and sample data.
+💡 **Next:** Pick ONE relevant table and call `get_table_info('table_name', show_sample=false)`.
+🧠 **Avoid loops:** Do not call `get_database_schema()` again in this conversation unless the dataset config changed.
 
 🔒 **Privacy:** All data is de-identified. Use aggregated queries for analysis."""
+    
+    except Exception as e:
+        # Fallback to static list if query fails
+        logger.error(f"Failed to query schema: {e}")
+        table_list = []
+        for table_name, info in UMCDB_TABLES.items():
+            table_list.append(f"📋 **{table_name}**")
+            table_list.append(f"   {info['description']}")
+        tables_text = "\n".join(table_list)
+        
+        return f"""{banner}
+📊 **Available Tables (fallback list):**
+
+{tables_text}
+⚠️ Could not query live schema. Use `get_table_info('table_name')` to verify table exists."""
 
 
 @mcp.tool()
@@ -286,12 +325,12 @@ def get_table_info(table_name: str, show_sample: bool = True) -> str:
     **What this does:**
     - Shows all columns with their data types
     - Optionally displays sample rows to understand data format
-    - Provides OMOP CDM documentation links
+    - Provides the EXACT table path to use in queries
 
     **Pro tip:** Always look at sample data to understand actual values and formats.
 
     Args:
-        table_name: Table name (e.g., 'person', 'measurement', 'drug_exposure')
+        table_name: Table name from get_database_schema() (e.g., 'person', 'measurement', 'observation')
         show_sample: Whether to include sample rows (default: True, recommended)
 
     Returns:
@@ -299,15 +338,8 @@ def get_table_info(table_name: str, show_sample: bool = True) -> str:
 
     **Privacy Note:** Sample data shows de-identified records only.
     """
-    # Get static info
-    info = get_table_info_config(table_name.lower())
-    if not info:
-        available = ", ".join(UMCDB_TABLES.keys())
-        return f"""❌ **Table Not Found:** '{table_name}'
-
-📋 **Available tables:** {available}
-
-💡 Use `get_database_schema()` to see all tables with descriptions."""
+    # Get optional description from config (if available)
+    info = get_table_info_config(table_name.lower()) if table_name.lower() in UMCDB_TABLES else None
 
     banner = _get_status_banner()
     
@@ -317,40 +349,52 @@ def get_table_info(table_name: str, show_sample: bool = True) -> str:
         # Get column information from BigQuery
         config = get_bigquery_config()
         dataset_project = config.get("dataset_project", config["project"])
+        
+        # Note: INFORMATION_SCHEMA must use the backtick-per-component format
         schema_query = f"""
         SELECT column_name, data_type, is_nullable
-        FROM `{dataset_project}.{config['dataset']}.INFORMATION_SCHEMA.COLUMNS`
+        FROM `{dataset_project}`.`{config['dataset']}`.INFORMATION_SCHEMA.COLUMNS
         WHERE table_name = '{table_name.lower()}'
         ORDER BY ordinal_position
+        LIMIT 100
         """
         
         # Security check for schema query
-        is_safe, msg, _ = enforce_security(schema_query + " LIMIT 100")
+        is_safe, msg, _ = enforce_security(schema_query)
         if not is_safe:
-            # Fallback to static info
+            # Fallback - show minimal info if schema query fails
+            desc = info['description'] if info else "OMOP CDM table"
             result = f"""{banner}
-📋 **Table:** {table_name}
+📋 **Table:** {full_table_path}
 
-{info['description']}
+{desc}
 
-**Notes:** {info['notes']}
+**To query this table, use:** {full_table_path}
 
 ⚠️ Could not fetch live schema: {msg}"""
             return result
         
         # Execute schema query
-        schema_result = _execute_bigquery_query(schema_query + " LIMIT 100")
+        schema_result = _execute_bigquery_query(schema_query)
+        
+        # Build result with optional description
+        desc = info['description'] if info else "OMOP CDM table"
+        notes = info.get('notes', '') if info else ''
         
         result = f"""{banner}
 📋 **Table:** {full_table_path}
 
-{info['description']}
+{desc}
+
+**⚠️ IMPORTANT: When writing SQL queries, use this EXACT table path:**
+{full_table_path}
 
 **Column Information:**
 {schema_result}
-
-**Notes:** {info['notes']}
 """
+        
+        if notes:
+            result += f"\n**Notes:** {notes}\n"
         
         if show_sample:
             sample_query = f"SELECT * FROM {full_table_path} LIMIT 3"
@@ -365,11 +409,13 @@ def get_table_info(table_name: str, show_sample: bool = True) -> str:
     
     except Exception as e:
         error_msg = sanitize_error_for_user(str(e))
+        desc = info['description'] if info else "Table information unavailable"
         return f"""❌ **Error:** {error_msg}
 
-📋 **Static Table Info:**
-Table: {table_name}
-Description: {info['description']}"""
+📋 **Table:** {table_name}
+{desc}
+
+💡 Use `get_database_schema()` to see all available tables."""
 
 
 @mcp.tool()
@@ -383,10 +429,10 @@ def execute_umcdb_query(sql_query: str) -> str:
     2. **Examine table structure:** Use `get_table_info('table_name')` to see columns and get the FULL table path
     3. **Write your SQL query:** Use the EXACT full table path from `get_table_info()` output
 
-    **CRITICAL: Use the FULL table path shown by get_table_info():**
-    ✅ CORRECT: `SELECT * FROM \`amsterdamumcdb\`.\`van_gogh_2026_datathon\`.\`person\` LIMIT 10`
-    ✅ CORRECT: `SELECT COUNT(DISTINCT person_id) FROM \`amsterdamumcdb\`.\`van_gogh_2026_datathon\`.\`procedure_occurrence\` WHERE procedure_concept_id = 4052536 GROUP BY procedure_concept_id LIMIT 10`
-    ❌ WRONG: `SELECT * FROM person` (missing project and dataset)
+    **CRITICAL: Use the FULL table path (copy exactly from get_table_info output):**
+    ✅ CORRECT: SELECT * FROM `amsterdamumcdb`.`van_gogh_2026_datathon`.`person` LIMIT 10
+    ✅ CORRECT: SELECT COUNT(DISTINCT person_id) FROM `amsterdamumcdb`.`van_gogh_2026_datathon`.`observation` WHERE observation_concept_id = 4128124 GROUP BY observation_concept_id LIMIT 10
+    ❌ WRONG: SELECT * FROM person LIMIT 10 (missing project.dataset prefix)
 
     **IMPORTANT REQUIREMENTS:**
     - All queries MUST include a LIMIT clause (max 1000 rows)
@@ -713,23 +759,26 @@ def get_security_info() -> str:
 def search_by_source_text(
     table: str,
     search_term: str,
+    source_column: str | None = None,
     additional_filters: str | None = None,
     limit: int = 100
 ) -> str:
-    """🔍 Search clinical data using original text values (works without vocabulary tables).
+    """🔍 Search clinical data using original text values (works without relying on OMOP vocabulary tables).
 
     **When to use:** Find procedures, conditions, drugs, or measurements by searching their 
     original text descriptions (not OMOP concept IDs).
 
     **Examples:**
-    - search_by_source_text("procedure_occurrence", "ECMO")
+    - search_by_source_text("device_exposure", "ECMO")
+    - search_by_source_text("observation", "ECMO")
     - search_by_source_text("condition_occurrence", "sepsis")
     - search_by_source_text("drug_exposure", "aspirin")
     - search_by_source_text("measurement", "heart rate")
 
     Args:
-        table: Table to search (procedure_occurrence, condition_occurrence, drug_exposure, measurement)
-        search_term: Text to search for in source_value columns
+        table: Table to search (use `get_database_schema()` to see what exists)
+        search_term: Text to search for in a *_source_value column
+        source_column: Optional override of the source text column (e.g., "device_source_value")
         additional_filters: Optional SQL WHERE conditions
         limit: Maximum rows (default: 100, max: 500)
 
@@ -737,33 +786,78 @@ def search_by_source_text(
         Aggregated results with source values and counts
     """
     banner = _get_status_banner()
-    
-    # Validate table
-    valid_tables = {
-        "procedure_occurrence": "procedure_source_value",
-        "condition_occurrence": "condition_source_value",
-        "drug_exposure": "drug_source_value",
-        "measurement": "measurement_source_value"
-    }
-    
-    if table.lower() not in valid_tables:
-        return f"{banner}\n❌ Invalid table. Use one of: {', '.join(valid_tables.keys())}"
-    
-    source_column = valid_tables[table.lower()]
+
+    table = table.strip()
+    if not table:
+        return f"{banner}\n❌ Table name is required."
     
     if limit > 500:
         limit = 500
     
     try:
+        from google.cloud import bigquery
+
         config = get_bigquery_config()
         dataset_project = config.get("dataset_project", config["project"])
+        dataset = config["dataset"]
         location = config.get("location", "EU")
-        
-        # Escape search term for SQL
+
+        # Resolve full table path in BigQuery (project/dataset/table)
+        full_table_path = get_bigquery_table_path(table.lower())
+
+        # If caller didn't specify the source column, auto-detect the best *_source_value column
+        if not source_column:
+            cols_query = f"""
+            SELECT column_name
+            FROM `{dataset_project}`.`{dataset}`.INFORMATION_SCHEMA.COLUMNS
+            WHERE table_name = '{table.lower()}'
+              AND LOWER(column_name) LIKE '%_source_value'
+            ORDER BY column_name
+            LIMIT 50
+            """
+
+            job_config = bigquery.QueryJobConfig()
+            cols_result = _bq_client.query(cols_query, job_config=job_config, location=location).result()
+            source_cols = [row.column_name for row in cols_result]
+
+            if not source_cols:
+                # Helpful fallback: show columns so user/LLM can choose explicitly
+                all_cols_query = f"""
+                SELECT column_name
+                FROM `{dataset_project}`.`{dataset}`.INFORMATION_SCHEMA.COLUMNS
+                WHERE table_name = '{table.lower()}'
+                ORDER BY ordinal_position
+                LIMIT 100
+                """
+                all_cols_result = _bq_client.query(all_cols_query, job_config=job_config, location=location).result()
+                all_cols = [row.column_name for row in all_cols_result]
+                return f"""{banner}
+❌ No `*_source_value` column found for table **{table.lower()}**.
+
+Try:
+- Use `get_table_info("{table.lower()}")` and choose a text column manually
+- Call `search_by_source_text(..., source_column="your_column")`
+
+Columns (first {min(100, len(all_cols))}):
+{", ".join(all_cols[:100])}"""
+
+            # Heuristics to pick the most relevant source column
+            table_l = table.lower()
+            preferred = []
+            preferred.append(f"{table_l}_source_value")  # rarely exists (but if it does, best)
+
+            # Common OMOP pattern: first token before '_' + "_source_value"
+            base = table_l.split("_", 1)[0] if "_" in table_l else table_l
+            preferred.append(f"{base}_source_value")
+
+            # Pick the first preferred that exists, else first *_source_value column
+            source_column = next((c for c in preferred if c in source_cols), source_cols[0])
+
+        # Escape search term for SQL LIKE
         safe_term = search_term.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
         
         # Build WHERE clause
-        where_clause = f"LOWER({source_column}) LIKE LOWER('%{safe_term}%')"
+        where_clause = f"LOWER(CAST(`{source_column}` AS STRING)) LIKE LOWER('%{safe_term}%')"
         
         if additional_filters:
             # Basic validation
@@ -775,12 +869,12 @@ def search_by_source_text(
         # Aggregated query to respect privacy
         query = f"""
         SELECT 
-            {source_column},
+            `{source_column}` AS source_value,
             COUNT(DISTINCT person_id) as patient_count,
             COUNT(*) as event_count
-        FROM `{dataset_project}.{config['dataset']}.{table}`
+        FROM {full_table_path}
         WHERE {where_clause}
-        GROUP BY {source_column}
+        GROUP BY source_value
         HAVING COUNT(DISTINCT person_id) >= 5
         ORDER BY patient_count DESC
         LIMIT {limit}
@@ -791,21 +885,23 @@ def search_by_source_text(
         if not is_safe:
             return f"{banner}\n❌ **Security Error:** {msg}"
         
-        from google.cloud import bigquery
         job_config = bigquery.QueryJobConfig()
         result = _bq_client.query(query, job_config=job_config, location=location).result()
         df = result.to_dataframe()
         
         if df.empty:
             return f"""{banner}
-🔍 **Search: "{search_term}"** in {table}
+🔍 **Search: "{search_term}"** in `{table.lower()}`
+Using:
+- table: {full_table_path}
+- column: `{source_column}`
 
-No results found or groups < 5 patients (privacy filter).
+No results found (or all matches were in groups < 5 patients due to privacy filtering).
 
-Try:
-- Different spelling or terminology
-- More general search term
-- Different table"""
+Next (do NOT re-run `get_database_schema()`):
+- Try broader terms (e.g., "tube", "vent", "ett", "endotrache")
+- Try another table (often `observation` vs `measurement`)
+- Or specify a different text column via `source_column=...` after `get_table_info(...)`"""
         
         # Format results
         total_patients = df['patient_count'].sum()
@@ -813,8 +909,10 @@ Try:
         
         result_text = []
         for _, row in df.head(20).iterrows():
+            sv = row.get("source_value", "")
+            sv = "" if sv is None else str(sv)
             result_text.append(
-                f"| {row[source_column][:50]} | {row['patient_count']} | {row['event_count']} |"
+                f"| {sv[:50]} | {row['patient_count']} | {row['event_count']} |"
             )
         
         return f"""{banner}

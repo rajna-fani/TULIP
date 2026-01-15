@@ -107,10 +107,15 @@ UMCDB_TABLES = {
         "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#drug_exposure",
         "notes": "Medication records including dosing information.",
     },
-    "procedure_occurrence": {
-        "description": "Clinical procedures performed",
-        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#procedure_occurrence",
-        "notes": "Includes interventions, surgeries, and other procedures.",
+    "observation": {
+        "description": "Clinical observations and facts",
+        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#observation",
+        "notes": "Contains clinical observations including procedures, device usage, and other facts.",
+    },
+    "device_exposure": {
+        "description": "Medical devices used by patients",
+        "omop_docs": "https://ohdsi.github.io/CommonDataModel/cdm54.html#device_exposure",
+        "notes": "Records of medical devices including ECMO, ventilators, etc.",
     },
     "measurement": {
         "description": "Clinical measurements and observations",
